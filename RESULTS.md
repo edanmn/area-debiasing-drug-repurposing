@@ -533,6 +533,50 @@ matrix-factorization signal are already removed): the two methods may be correct
 not identical things, and the evaluation happens to be closer to naive's own objective. This is
 flagged as the remaining open question in Discussion rather than claimed as resolved.
 
+### Resolving the remaining open question: does either method's penalty term actually align with what the bias metrics measure?
+
+The paragraph above ends in a candidate explanation, not a finding: it had not been measured.
+This closes that gap. Script: `code/13_naive_vs_proposed_alignment.py`.
+
+**Test**: for each target, under CVS2 (the split Table "main-bias" reports), refit the exact same
+pipeline objects sections 4-5 use and compute two quantities for every non-indicated test
+compound: `raw_rate`, naive subtraction's own penalty term (the raw negative-control indication
+rate `raw_area_rate(Y, nc_idx)`), and `area_penalty`, the proposed method's penalty term made
+concrete, i.e. the contribution the area factor's fitted coefficients would have made to the
+score had they not been projected out ($A \cdot \texttt{clf\_db.coef\_[n\_base:]}$). Then measure
+how well each one, used as a standalone one-feature classifier, separates the compounds the
+paper's own bias metrics flag: same-ATC-area membership (the `area_enrichment` criterion) and
+SIDER-hard-negative or proconvulsant-panel membership (the `hard_neg_rank_pct` criterion), via
+AUROC.
+
+**Result** (`results/naive_vs_proposed_alignment.csv`, mean over 5 seeds, CVS2):
+
+| Target | Flag | AUROC, raw_rate | AUROC, area_penalty |
+|---|---|---|---|
+| depression | same-ATC-area | 0.766 ± 0.051 | 0.499 ± 0.002 |
+| depression | hard-negative | 0.636 ± 0.025 | 0.499 ± 0.002 |
+| antipsychotic | same-ATC-area | 0.774 ± 0.046 | 0.498 ± 0.005 |
+| antipsychotic | hard-negative | 0.663 ± 0.033 | 0.501 ± 0.002 |
+| epilepsy | same-ATC-area | 0.787 ± 0.055 | 0.497 ± 0.007 |
+| epilepsy | hard-negative | 0.600 ± 0.042 | 0.500 ± 0.002 |
+| epilepsy | proconvulsant | 0.721 ± 0.084 | 0.500 ± 0.002 |
+
+**This is the resolution, not a further hint.** Across every target and every one of the paper's
+own bias flags, `raw_rate` on its own separates the flagged compounds well above chance, 0.60 to
+0.79 AUROC, substantial, standalone discriminative power. `area_penalty` sits at 0.497-0.501 in
+every single row, std 0.002-0.007: not weak signal, no signal, to a precision tight enough that
+noise is not a plausible explanation for the gap. Naive subtraction wins on the bias metrics
+because its penalty term is directly, measurably aligned with what those metrics measure; the
+proposed method's penalty term, after chemistry and matrix-factorization signal are regressed out
+of the negative controls' residual before the SVD step, is left almost perfectly uninformative
+about the same thing. The residualization step that makes the proposed method theoretically
+appealing, remove only the unwanted variation, not raw group membership, is exactly what strips
+out the part of the signal the evaluation's own bias metrics are built to detect. The two methods
+are not competing to solve the same operational problem: naive subtraction targets group
+membership directly, the bias metrics measure group membership, and the proposed method targets
+something residual to it by design. We no longer report this as an open question; this is the
+mechanism, measured directly rather than argued for.
+
 ## 6. Figures
 
 - `figures/fig1_bemegride_top10.png` -- top-10 non-AED candidates, plain model (section 1a)
@@ -568,6 +612,11 @@ A full run log (what was executed, in what order, what failed/was fixed along th
    current two-stage estimate-then-refit procedure, or (c) testing whether the method behaves
    differently on a less chemistry-dominated backbone, since item 5 below notes chemistry may be
    doing most of the work here and leaving little room for a cross-indication correction to matter.
+   **Further update, now resolved**: see "Resolving the remaining open question" in section 5
+   above. The structural account above was correct in direction but incomplete; the direct
+   alignment test shows naive subtraction's penalty term separates the bias metrics' own flagged
+   compounds at 0.60-0.79 AUROC while the proposed method's penalty term sits at chance (0.497-0.501)
+   on every target and every flag. This is no longer an open question for the final paper.
 2. **The naive-subtraction failure mode (AUPRC 0.45->0.17) from the idea document was NOT
    reproduced** in this implementation at anywhere near that severity, across a lambda sweep from
    0.5 to 64. **Follow-up: an expanded search of `ICHI2027_mgan/code/` (figures.py, resurvey.py,

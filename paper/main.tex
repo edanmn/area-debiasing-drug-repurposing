@@ -141,7 +141,7 @@ This paper set out to build a more principled alternative to a correction we ass
 
 Several limitations bear directly on how much weight this result should carry. ATC and SIDER both cover under 10\% of the LINCS library, which caps how strong any ATC- or SIDER-grounded correction can be measured to be; a library with denser coverage of marketed drugs might tell a different story. The CVS3 cold-start-disease scheme is degenerate for any method, including ours, that needs some target-specific signal to estimate an indication-specific residual: with no such signal, plain and proposed provably collapse to the same cross-indication transfer score, so CVS3 does not actually test the debiasing mechanism and we report it for completeness rather than as evidence either way. We did not test the remaining candidate explanation raised in Section~\ref{sec:overlap}, that the bias metrics may be structurally closer to naive subtraction's own mechanism than to the proposed method's. We also did not run a secondary evaluation against repoDB~\cite{brown2017repodb} or a temporal holdout by approval date, and we did not read DRDM~\cite{meng2025drdmb} or the closely related 2025 debiasing literature in full before finalizing this account.
 
-\paragraph{Code availability.} \textbf{[AUTHOR ACTION REQUIRED, remove before submission: RECOMB 2027 requires a public, documented code repository linked in the paper for any submission developing new methods, as this one does. Replace this paragraph with the actual repository URL once one is published.]}
+\paragraph{Code availability.} Code, data-construction scripts, and full per-seed results are available at \url{https://github.com/edanmn/area-debiasing-drug-repurposing}.
 
 \bibliographystyle{splncs04}
 \bibliography{refs}

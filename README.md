@@ -10,8 +10,7 @@ correction on every bias-diagnostic metric tested, under two independently imple
 strategies (RUV-2-style and RUV-4-style).
 
 **Status: not yet published.** This README and the local commit history exist so the repository is
-ready to push in one step once the authors confirm it should be made public (see
-`paper/main.tex`'s `AUTHOR ACTION REQUIRED` blocks for the two open decisions that gate this).
+ready to push in one step once the authors confirm it should be made public.
 
 ## Layout
 
@@ -38,8 +37,7 @@ ready to push in one step once the authors confirm it should be made public (see
 ## Before this repository is made public
 
 - Replace the symlinked paths in `data/` with either the real files or a fetch script.
-- Resolve the two `AUTHOR ACTION REQUIRED` items in `paper/main.tex`, including the proposed
-  (not yet committed) related-work paragraph addressing overlap with a companion manuscript.
+- Resolve the remaining `AUTHOR ACTION REQUIRED` item in `paper/main.tex` (code-availability URL).
 - Confirm no large raw intermediates are swept in by an unqualified `git add`.
 
 ## Reproducing

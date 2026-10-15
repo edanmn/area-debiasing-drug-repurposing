@@ -1,0 +1,21 @@
+=== extend SIDER coverage to full 9,878-compound library ===
+RDKit full InChIKey computed for 9878/9878 compounds
+Resolving PubChem CIDs via InChIKey batch lookup ...
+  pubchem lookup: 60/9876 keys queried, 58 resolved so far
+  pubchem lookup: 1260/9876 keys queried, 1217 resolved so far
+  pubchem lookup: 2460/9876 keys queried, 2384 resolved so far
+  pubchem lookup: 3660/9876 keys queried, 3549 resolved so far
+  pubchem lookup: 4860/9876 keys queried, 4711 resolved so far
+  pubchem lookup: 6060/9876 keys queried, 5864 resolved so far
+  pubchem lookup: 7260/9876 keys queried, 7024 resolved so far
+  pubchem lookup: 8460/9876 keys queried, 8190 resolved so far
+  pubchem lookup: 9660/9876 keys queried, 9361 resolved so far
+Resolved PubChem CID for 9566/9876 unique InChIKeys
+-> 9568/9878 of the 9,878 compounds have a resolved PubChem CID
+Loading raw meddra_all_se.tsv.gz (SIDER side-effect table, flat STITCH CIDs) ...
+meddra PT rows: 145321, distinct flat CIDs: 1430
+
+Final coverage: 543/9878 (5.5%) of the 9,878 compounds resolve to a SIDER-mapped PubChem CID
+Wrote data/sider_full.parquet: 62465 (ik14, se_name) rows, 543 distinct compounds, 3265 distinct MedDRA PTs
+
+[sanity] previous partial map (name-based, Phase-2 subset only): 534 compounds, of which resolved to a cid: 534

@@ -484,6 +484,55 @@ failure is not an artifact of the specific two-stage RUV-2 mechanism, since a me
 joint estimator built from the same negative-control sets and the same shared representation fails
 in the same way. **No further iteration on this method follows from this result.**
 
+### Testing the identifiability-violation hypothesis directly
+
+Sections 4-5 above diagnosed the failure as "structural" without pinning down a specific
+mechanism. RUV's own identifying assumption, formalized in Gerard & Stephens' unification (eq.
+8-9 of arXiv:1705.08393, already cited as `gerard2021ruvstar`), is that a negative-control column
+must have zero loading on the covariate of interest; if that is violated, the area factor A
+estimated from the negative controls absorbs real signal, and projecting A out (the whole
+mechanism of the proposed method) removes real signal along with the confound. This is the single
+most natural formal explanation for why `proposed_negctrl` would cost precision relative to
+`plain`/`naive_subtract`, and it had not been tested directly, only invoked qualitatively. Script:
+`code/12_signal_overlap_diagnostic.py`.
+
+**Test**: for each of the three evaluated targets, under CVS1 and CVS2 (the two schemes where A is
+actually computed; CVS3 never fits it, see section 4), refit the exact same pipeline objects used
+in section 4 (`fit_shared_mf`, `chem_pca`, `fit_per_indication_logreg`,
+`negative_control_area_factor`) and regress the target's own TRUE label $y_{k0}$ (train rows only)
+onto its area factor $A$. Under the identifying assumption this $R^2$ should be near zero; a large
+value would mean $A$ is predictive of the very thing the method is trying to preserve.
+
+**Result** (`results/signal_overlap_diagnostic.csv`, mean over 5 seeds):
+
+| target | cvs | overlap $R^2$ |
+|---|---|---|
+| antipsychotic | CVS1 | 0.017 |
+| antipsychotic | CVS2 | 0.021 |
+| depression | CVS1 | 0.009 |
+| depression | CVS2 | 0.011 |
+| epilepsy | CVS1 | 0.0006 |
+| epilepsy | CVS2 | 0.0008 |
+
+All six values are small in absolute terms (R² under 0.025) and do not track the measured
+naive-advantage gap on the bias-diagnostic metrics (`results/signal_overlap_vs_bias_gap.csv`):
+epilepsy has the smallest overlap of the three targets but the largest gap in naive's favor
+(proconvulsant median-percentile advantage of 39-45 points at CVS1/CVS2, vs. 9-21 points for
+depression/antipsychotic), the opposite of what the identifiability-violation hypothesis predicts.
+Across all 14 (target, cvs, metric) cells where both methods are defined, naive subtraction has a
+positive advantage in every single one, but the size of that advantage is not explained by how
+much of the target's own label the area factor happens to absorb.
+
+**Honest conclusion: this rules out the identifiability-violation hypothesis as the explanation,
+rather than confirming it.** The failure is not that the negative controls are secretly carrying
+target-relevant signal that gets thrown away. A more mundane candidate, not yet tested, is that the
+bias-diagnostic metrics themselves are closer operationalizations of what naive subtraction directly
+penalizes (raw negative-control-indication membership rate) than of what the proposed method
+targets (a residualized, 2-dimensional SVD summary of the controls' fit AFTER chemistry and
+matrix-factorization signal are already removed): the two methods may be correcting for related but
+not identical things, and the evaluation happens to be closer to naive's own objective. This is
+flagged as the remaining open question in Discussion rather than claimed as resolved.
+
 ## 6. Figures
 
 - `figures/fig1_bemegride_top10.png` -- top-10 non-AED candidates, plain model (section 1a)

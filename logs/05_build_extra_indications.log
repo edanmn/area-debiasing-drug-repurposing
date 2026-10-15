@@ -1,0 +1,13 @@
+=== building additional ChEMBL/ATC indications for negative-control pool ===
+parkinson (N04): 39 ATC codes, 34 molecules, 21 positives in LINCS of 9878
+anxiolytic (N05B): 39 ATC codes, 35 molecules, 7 positives in LINCS of 9878
+antidementia (N06D): 13 ATC codes, 6 molecules, 6 positives in LINCS of 9878
+opioid_analgesic (N02A): 60 ATC codes, 26 molecules, 4 positives in LINCS of 9878
+raas_antihypertensive (C09): 85 ATC codes, 29 molecules, 17 positives in LINCS of 9878
+antacid (A02): 86 ATC codes, 44 molecules, 16 positives in LINCS of 9878
+osteoporosis (M05B): 28 ATC codes, 11 molecules, 6 positives in LINCS of 9878
+antimycotic (J02): 16 ATC codes, 15 molecules, 8 positives in LINCS of 9878
+immunosuppressant (L04): 104 ATC codes, 38 molecules, 20 positives in LINCS of 9878
+
+Total indications now available: 18 (9 original + 9 new negative-control partners)
+{'parkinson': 21, 'anxiolytic': 7, 'antidementia': 6, 'opioid_analgesic': 4, 'raas_antihypertensive': 17, 'antacid': 16, 'osteoporosis': 6, 'antimycotic': 8, 'immunosuppressant': 20}

@@ -1,0 +1,35 @@
+=== fetch ATC level-1 for all 9,878 compounds ===
+Step 1: fetching full ChEMBL atc_class table ...
+  atc_class table: 5579 rows
+Step 2: computing full InChIKeys for 9878 compounds ...
+RDKit InChIKey computed for 9878/9878 compounds (0 failed to parse)
+Step 3: batch ChEMBL molecule lookup for 9876 unique full InChIKeys ...
+  molecule lookup: 50/9876 inchikeys queried, 32 resolved so far
+  molecule lookup: 1050/9876 inchikeys queried, 549 resolved so far
+  molecule lookup: 2050/9876 inchikeys queried, 1064 resolved so far
+  molecule lookup: 3050/9876 inchikeys queried, 1583 resolved so far
+  molecule lookup: 4050/9876 inchikeys queried, 2108 resolved so far
+  molecule lookup: 5050/9876 inchikeys queried, 2635 resolved so far
+  molecule lookup: 6050/9876 inchikeys queried, 3130 resolved so far
+  molecule lookup: 7050/9876 inchikeys queried, 3601 resolved so far
+  molecule lookup: 8050/9876 inchikeys queried, 4128 resolved so far
+  molecule lookup: 9050/9876 inchikeys queried, 4663 resolved so far
+
+Resolved molecule record in ChEMBL (by full InChIKey) for 5099/9878 compounds
+Of those, 954 have >=1 ATC classification
+Wrote 1124 (ik14, atc_level1) rows to data/atc_level1.csv covering 954 distinct compounds
+atc_level1_name
+NERVOUS SYSTEM                                                     199
+CARDIOVASCULAR SYSTEM                                              157
+ANTINEOPLASTIC AND IMMUNOMODULATING AGENTS                         111
+ALIMENTARY TRACT AND METABOLISM                                     97
+ANTIINFECTIVES FOR SYSTEMIC USE                                     97
+RESPIRATORY SYSTEM                                                  92
+DERMATOLOGICALS                                                     86
+SENSORY ORGANS                                                      76
+MUSCULO-SKELETAL SYSTEM                                             71
+GENITO URINARY SYSTEM AND SEX HORMONES                              42
+ANTIPARASITIC PRODUCTS, INSECTICIDES AND REPELLENTS                 34
+BLOOD AND BLOOD FORMING ORGANS                                      27
+VARIOUS                                                             25
+SYSTEMIC HORMONAL PREPARATIONS, EXCL. SEX HORMONES AND INSULINS     10

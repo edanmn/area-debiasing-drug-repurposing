@@ -1,0 +1,52 @@
+=== Diagnostic: pure co-occurrence matrix factorization has no signal on this data ===
+Full 9,878-compound library: indication matrix is 9878 x 18, 575 total positive cells (0.32%
+density), 94.3% of rows (9,311 compounds) have ZERO positive indications across all 18 classes.
+A free logistic MF (r=16, 300 epochs, lr=0.05) fit on the FULL matrix with NO train/test split at
+all (i.e. best case, pure training-set fit) gives per-indication AUPRC indistinguishable from each
+indication's own base rate for all 18 classes, e.g.:
+  epilepsy       train AUPRC 0.0036  base 0.0031
+  depression     train AUPRC 0.0067  base 0.0054
+  antipsychotic  train AUPRC 0.0072  base 0.0044
+Restricting to the "drug pool" (ChEMBL max_phase>=1 for ANY indication, or already positive;
+n=1,702, row-nonzero-indication fraction 33%) and increasing capacity (r=16, 800 epochs, lr=0.2)
+helps modestly but the three primary CNS indications are still close to base rate even on pure
+training data:
+  epilepsy       train AUPRC 0.0285  base 0.0182
+  depression     train AUPRC 0.0349  base 0.0311
+  antipsychotic  train AUPRC 0.0274  base 0.0253
+  (vs. larger-count classes which do better: antineoplastic 0.0847 vs 0.0805 base, lipid 0.0766 vs
+  0.0118 base, osteoporosis 0.1801 vs 0.0035 base)
+
+Conclusion: with only 18 indications, pure compound x indication co-occurrence does not carry
+enough signal for matrix factorization alone to rank candidates -- exactly the reason NRLMF/NRBdMF
+themselves never rely on the interaction matrix alone, but add drug/disease similarity-based
+"neighborhood regularization". We therefore concatenate a fixed, leakage-free PCA of each
+compound's ECFP4 fingerprint (TruncatedSVD, r_chem=32) to the free MF embedding to form the shared
+compound representation used by the plain/naive/proposed methods (see models.py). NRBdMF is left
+chemistry-free, matching Azuma et al. 2022's own specification. This revision, and the honest
+negative finding that motivated it, is logged here rather than silently discarded.
+
+=== Bug found and fixed during evaluation: NRBdMF baseline ignored train_mask ===
+The first working version of models.nrbdmf_signed_matrix() factorized the FULL signed matrix S
+built from Y, without intersecting with the CVS1/CVS2/CVS3 train_mask -- i.e. it had access to the
+true target-indication labels for cells that were supposed to be held out as test data. This gives
+the NRBdMF baseline an unfair advantage in cold-start settings (CVS2/CVS3) and a mild one in CVS1.
+Fixed by multiplying NRBdMF's nonzero loss mask by train_mask before factorizing (see
+nrbdmf_signed_matrix's docstring). All numbers in results/eval_*.csv are from the FIXED version.
+
+=== CVS3 (cold-start disease) degeneracy for plain/proposed, and the fix applied ===
+Under CVS3, the target indication's entire column is masked out of training by construction, so
+models.fit_per_indication_logreg(...) has ZERO positive-or-negative training rows for that column
+and correctly returns clf=None (an honest "cannot fit" signal, not a bug). An earlier version of
+06_run_evaluation.py then scored this as an all-zero vector, which produces a fully tied ranking
+broken only by array index -- a meaningless but deterministic number that happened to come out
+identical for "plain" and "proposed" (since both collapsed to zero) and was being reported as if
+it were a real result. Fixed by making 06_run_evaluation.py fall back, ONLY when the target's own
+classifier is None, to the mean of the already-fitted predicted probabilities of the target's own
+negative-control indications (P_hat[:, nc_idx].mean(1)) -- i.e. under true disease cold-start, both
+plain and proposed transfer from the mechanistically-related negative-control indications, which is
+the only information available without the target's own labels. This is reported and discussed
+explicitly as a structural limitation of CVS3: the proposed method's own machinery (estimating a
+TARGET-specific residual after removing an area factor) has nothing target-specific left to
+estimate once zero target labels are available, so it provably reduces to the same transfer
+baseline as "plain" under CVS3 for any such method, not only ours.

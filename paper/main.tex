@@ -1,0 +1,148 @@
+\documentclass{llncs}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{amsmath}
+\usepackage{hyperref}
+
+\begin{document}
+
+\title{Ranking Within the Therapeutic Area: Removing Organ-System Confounding from Drug-Repurposing Models with Negative-Control Indications}
+
+% RECOMB 2027 is single-blind review; anonymization is not required or wanted. Replace with real author names/affiliations before submission.
+\author{[AUTHOR NAMES]}
+\institute{[AFFILIATION] --- submitted to RECOMB 2027}
+
+\maketitle
+
+\begin{abstract}
+A model trained to rank drug candidates for one indication learns two entangled signals: what is specific to the disease, and what is shared across drugs acting on the same organ system. The second signal can place drugs that are irrelevant, or even harmful, near the top of a ranked list; in our data the convulsant bemegride ranks first among non-antiepileptic candidates for epilepsy. We measure this confound across depression, antipsychotic, and epilepsy candidate rankings using Anatomical Therapeutic Chemical (ATC) classification, and we test whether a correction inspired by negative-control methods from genomics and pharmacoepidemiology can remove it without the precision loss a naive correction is assumed to cause. The result runs against our own hypothesis: a naive area-score subtraction is not the precision-destroying shortcut we expected, and it outperforms our negative-control-based method on every bias-diagnostic metric we measured. We confirm this is not a noisy-estimate artifact through a shrinkage-based follow-up and a calibration check, and we report the comparison plainly, including a structural account of why the more principled method did not win.
+\end{abstract}
+
+\section{Introduction}
+
+\textbf{[AUTHOR ACTION REQUIRED, remove before submission: the bemegride finding and the near-analog/novel-scaffold confound this paper and its companion build on are also the headline content of this group's own manuscript ``How Much Do Evaluation Choices Inflate Transcriptomic Drug Repurposing? A Measured Audit on LINCS L1000'' (\texttt{ICHI2027\_mgan/paper/main.tex}), currently marked as under double-blind review. This section currently presents that measurement as newly discovered here. That manuscript explicitly states ``we propose no new model''; it is a measurement/audit paper, whereas this paper proposes and tests a correction method, a genuinely different contribution sitting on the same measurement. Draft resolution below, NOT committed, pending your confirmation of the other manuscript's actual status and your judgment on whether citing it here could affect its own double-blind review (this RECOMB submission is single-blind and will carry real author names, so disclosing the connection could let someone cross-reference the two and identify the ICHI submission's anonymous authors): replace this bracketed paragraph with something like ``A companion measurement study from this group audited evaluation-protocol choices in LINCS-based repurposing models and reported this same ranking as part of a broader audit of distinct evaluation defects [CITATION ONCE STATUS CONFIRMED]; the present paper narrows to the specific debiasing question that study's own scope excludes, and proposes and evaluates a correction.'' Confirm status and disclosure risk before using this.]}
+
+Chemical structure is not the only thing a repurposing model can learn to exploit. A model trained to separate antiepileptic drugs from everything else also, incidentally, learns what distinguishes neurology drugs from the rest of the pharmacopeia, and that second signal rides along with the first in every prediction. The practical consequence shows up at the top of a ranked candidate list: in a plain ECFP4 fingerprint model trained on known antiepileptic drugs, bemegride, a convulsant once used to induce seizures for electroconvulsive therapy, ranks first among 1{,}522 non-antiepileptic candidates, ahead of every genuinely plausible repurposing lead. We reproduce this finding exactly (score 0.7942, matching a prior run to four decimal places) as the motivating case for this paper.
+
+The same pattern appears in aggregate, not just in one striking example. Restricting to drugs that carry a WHO ATC classification, candidates flagged as nervous-system drugs make up 18.8\% of the top 50 false positives for a depression model and 15.2\% for an antipsychotic model, against base rates of 10.2\% and 10.6\% in each candidate pool. The enrichment is real, roughly 1.5 to 1.8 times the base rate, though smaller than a name-matched therapeutic-area label from the Drug Repurposing Hub had previously suggested; ATC covers only 9.7\% of the LINCS compound library, mostly marketed drugs, so both the base rate and the enrichment statistic are measured on a narrower and more defensible, if sparser, population than before. We use the ATC-based numbers throughout this paper rather than the earlier Hub-based ones.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=0.48\textwidth]{fig1_bemegride_top10.png}
+\includegraphics[width=0.48\textwidth]{fig1_neurology_enrichment.png}
+\caption{Left: the top 10 non-antiepileptic candidates ranked by a plain ECFP4 fingerprint model trained on known antiepileptic drugs; bemegride, a convulsant, ranks first. Right: nervous-system drugs (ATC Level-1 'N') are enriched among the top-50 false positives of depression and antipsychotic models relative to each candidate pool's base rate.}
+\label{fig:motivation}
+\end{figure}
+
+Two corrections suggest themselves. The simple one subtracts a generic area score from the disease-specific score, directly penalizing membership in the confounded class; prior informal analysis of this group's work assumed this collapses precision too far to be usable. The more principled one borrows an idea from genomics and pharmacoepidemiology: estimate the shared organ-system factor from negative-control indications, diseases in the same area treated by a different mechanism, and remove only that factor rather than a blunt area membership score. We built and evaluated the principled version. It did not beat the simple one. The rest of the paper is an honest account of that comparison: what we measured, what we tried when the result looked fixable, and what we think is actually going on.
+
+\section{Related Work}
+
+\paragraph{Negative controls for unwanted variation.}
+Removing unwanted variation (RUV) using negative-control features is a long-established genomics technique: RUV-2~\cite{gagnonbartsch2012ruv} estimates latent confounding factors from a known-null set of control genes and removes them before testing; later work~\cite{gerard2021ruvstar} unifies several RUV variants under one factor-analysis framework. Surrogate variable analysis~\cite{leek2007sva} and empirical-Bayes batch correction~\cite{johnson2007combat} address related but distinct versions of the same problem; ComBat requires known batch labels rather than negative controls, which is why we follow the negative-control-identification strategy instead. A separate lineage, negative-control exposures and outcomes in pharmacoepidemiology~\cite{lipsitch2010negativecontrols}, formalizes the same logic for confounding in observational drug-effect studies, and remains in active use~\cite{negctrlreview2023}. Our area-factor estimation step is a direct structural analogue of this machinery, applied to therapeutic indications rather than genes or exposures; we make no claim that the underlying statistical idea is new, only that its application to cross-indication drug-repurposing confounding is.
+
+\paragraph{Debiasing drug-repurposing and DTI models.}
+NRBdMF~\cite{azuma2022nrbdmf} factorizes a signed drug$\times$disease matrix built from SIDER~\cite{kuhn2016sider}, with indications labeled $-1$ and side effects labeled $+1$, to reduce false positives through \emph{within-drug} directionality. This is the closest existing method to ours, but it never uses \emph{other diseases} as negative controls and never estimates or removes a shared latent area factor; we include it as a baseline and discuss the distinction explicitly in our results. TAPB~\cite{tapb2025b} and DRDM~\cite{meng2025drdmb} address other biases in drug-target/drug-repositioning prediction (target-popularity and graph-degree bias, respectively) via interventional training and association reweighting; neither targets organ-system/therapeutic-area confounding or uses negative-control indications. SIDER-derived phenotypic similarity was first shown to carry repositioning-relevant signal by Campillos et al.~\cite{campillos2008sideeffect,kuhn2010sider}, which is the basis for our use of SIDER-flagged adverse effects as hard negatives.
+
+\paragraph{Benchmarks and resources.}
+repoDB~\cite{brown2017repodb} provides a curated gold-standard set of approved and failed drug-disease pairs and is a standard secondary comparison point in this literature. The Drug Repurposing Hub~\cite{corsello2017repurposinghubb} is the source of the name-matched therapeutic-area label used in prior work from this group, which has limited coverage; we replace it with ATC classification. Epileptogenic/proconvulsant drug lists have an established clinical literature base~\cite{ruffmann2006epileptogenic,chen2016druginducedseizures,shorvon2002proconvulsant}, which we use to validate the hard-negative panel used for the epilepsy case (see Section~\ref{sec:data}).
+
+\section{Data}
+\label{sec:data}
+We build on the nine ChEMBL~\cite{zdrazil2024chemblb} indication classes used in our companion study (epilepsy, depression, antipsychotics, antibacterials, antidiabetics, antineoplastics, lipid-lowering drugs, NSAIDs, and betablockers as an antihypertensive proxy), over the same 9{,}878-compound LINCS library, and extend the matrix with nine further ATC-defined indications (Parkinson's disease, anxiolytics, antidementia drugs, opioid analgesics, renin-angiotensin antihypertensives, antacids, osteoporosis drugs, antimycotics, and immunosuppressants) chosen so that every original class has at least one same-area, different-mechanism negative-control partner. ATC Level-1 codes come from the ChEMBL molecule API, resolved by full InChIKey; only 954 of 9{,}878 compounds (9.7\%) carry any ATC classification at all, since most of the library is research or tool compounds rather than marketed drugs, and this sparsity is the main reason the enrichment statistics in Section~\ref{sec:intro-confound} are smaller than a name-matched Hub label had suggested.
+
+SIDER~\cite{kuhn2016sider} side-effect data is joined to the full compound set by PubChem CID, extending a prior join that covered only a 1{,}725-compound subset. Coverage remains low in absolute terms, 543 of 9{,}878 compounds (5.5\%), for the same reason as ATC: SIDER only covers marketed drugs with a package insert. We use SIDER's characteristic adverse-effect terms as hard negatives: convulsion-family terms for epilepsy, hypotension for antihypertensives, hyperglycaemia for antidiabetics, and so on for the classes where such a term map makes sense; we do not invent one for classes where it does not.
+
+For the epilepsy case specifically, we use a 43-drug proconvulsant list from this group's own prior, unpublished work. We state its provenance plainly rather than treat it as an external resource: the list is literature-curated from Chen, Albertson \& Olson~\cite{chen2016druginducedseizures}, a peer-reviewed clinical review of drug-induced seizures, and we cross-validate it against two fully public sources. Of 82 canonical compounds extracted from the original curation, 62 resolve to a compound in our library; of those, 38 (61\%) carry a SIDER-listed convulsion or seizure adverse effect, and 27 (33\%) match a risk tier in the independently published systematic review of Ruffmann, Bogliun \& Beghi~\cite{ruffmann2006epileptogenic}. The overlap with SIDER is substantial given SIDER's own sparse 5.5\% library coverage, since most proconvulsants in this list are marketed drugs and resolve to SIDER at a much higher rate than the library average.
+
+\section{Method}
+\label{sec:method}
+Each compound is represented by concatenating a 32-component PCA of its ECFP4 fingerprint (TruncatedSVD, chosen to avoid any indication-matrix leakage into the chemistry features) with a 16-dimensional embedding from a free logistic matrix factorization fit jointly across all 18 indications. The chemistry component is necessary rather than cosmetic: a pure compound-by-indication co-occurrence factorization, with no chemistry at all, carries almost no signal on this matrix, since 94\% of the 9{,}878-compound library has zero positive indications across all 18 classes and per-indication AUPRC on pure training data is indistinguishable from the indication's own base rate. This is the same reason NRLMF and NRBdMF add drug or disease similarity through neighborhood regularization rather than relying on the interaction matrix alone; we add chemistry for the same structural reason.
+
+On top of this shared representation, we compare four ways of scoring candidates for a target indication $k_0$. \emph{Plain} fits one logistic regression per indication on the shared representation, with no area correction. \emph{Naive subtraction} scores a candidate as the plain score minus $\lambda$ times a min-max-normalized mean indication rate over $k_0$'s negative-control set, with $\lambda=2$. \emph{NRBdMF} factorizes a signed drug-by-disease matrix directly, following Azuma et al.~\cite{azuma2022nrbdmf}: $-1$ for a ChEMBL/ATC indication, $+1$ for a SIDER characteristic-adverse-effect hit, and the chemistry component withheld, matching the original method's specification. \emph{Proposed} is the negative-control correction this paper is actually about: take $k_0$'s negative-control set $\mathrm{NC}(k_0)$, diseases in the same ATC Level-1 area treated through a different mechanism; compute the train-only residuals of the already-fit plain models restricted to $\mathrm{NC}(k_0)$'s columns; take the leading left singular vectors of that residual matrix as an area factor $A$, following the RUV-2 identification strategy of Gagnon-Bartsch and Speed~\cite{gagnonbartsch2012ruv}, applied here to indications rather than genes; refit $k_0$ with $[\text{chemistry+MF}, A]$ as features; and report the score with $A$'s coefficients dropped, projecting out whatever the negative controls explain.
+
+We later tested whether a shrunk version of this correction, scaling $A$ by a weight $s\in[0,1]$ before use, following the unified RUV family of Gerard and Stephens~\cite{gerard2021ruvstar}, would improve matters; Section~\ref{sec:shrinkage} reports that it does not.
+
+\section{Experiments}
+\label{sec:experiments}
+
+\subsection{Reproducing the motivating confound}
+\label{sec:intro-confound}
+We retrained the plain ECFP4 fingerprint model for epilepsy, depression, and antipsychotics, averaged over five seeds, and confirmed both parts of the motivating observation from Section~1: bemegride ranks first of 1{,}522 non-antiepileptic candidates at a score matching the pre-existing result to four decimal places, and the top-50 false positives for depression and antipsychotic models are enriched for nervous-system drugs at roughly 1.5 to 1.8 times each pool's base rate (18.8\% vs.\ 10.2\%, and 15.2\% vs.\ 10.6\%, respectively). We looked for, but could not locate in any saved script in this group's prior work, the specific AUPRC collapse from 0.45 to 0.17 that an earlier informal analysis had attributed to naive area-score subtraction. We report what we can actually measure instead.
+
+\subsection{Evaluation protocol}
+We evaluate under three cross-validation schemes matched to the matrix-factorization repurposing literature: CVS1, a random 20\% holdout of matrix cells; CVS2, a cold-start-drug holdout of 20\% of compounds; and CVS3, a cold-start-disease holdout of the entire target column. Each scheme is run five times with independent splits and independent model initializations, on an identical 1{,}702-compound drug pool shared by all four methods. For CVS2 we also report a scaffold-disjoint variant, since the shared representation includes chemistry and a random compound holdout can still leak near-duplicate scaffolds between train and test.
+
+\subsection{Main results}
+Table~\ref{tab:main-auprc} reports AUPRC on the true indication label; Table~\ref{tab:main-bias} reports the two bias-diagnostic metrics that matter most for this paper's question, the same-ATC-area rate among the top 50 false positives and the median rank percentile of SIDER-flagged hard negatives.
+
+\begin{table}[t]
+\centering
+\caption{AUPRC on true indications (mean over 5 reruns; 95\% bootstrap CI in parentheses).}
+\label{tab:main-auprc}
+\begin{tabular}{llcccc}
+\toprule
+Target & CVS & Plain & Naive subtract & NRBdMF & Proposed \\
+\midrule
+depression & 1 & 0.316 (.194,.438) & 0.304 (.215,.400) & 0.029 & 0.306 (.189,.424) \\
+depression & 2 & 0.201 (.114,.289) & 0.190 (.105,.262) & 0.039 & 0.181 (.112,.247) \\
+antipsychotic & 1 & 0.530 (.435,.618) & 0.551 (.447,.654) & 0.041 & 0.526 (.434,.611) \\
+antipsychotic & 2 & 0.440 (.252,.628) & 0.412 (.215,.608) & 0.039 & 0.437 (.264,.611) \\
+epilepsy & 1 & 0.072 (.048,.095) & 0.073 (.047,.099) & 0.030 & 0.071 (.048,.094) \\
+epilepsy & 2 & 0.091 (.065,.127) & 0.090 (.067,.128) & 0.024 & 0.085 (.065,.112) \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{table}[t]
+\centering
+\caption{Bias-diagnostic metrics. Top-50 same-area rate: lower is better (base rate $\approx$ 0.09--0.11). Hard-negative and proconvulsant rank: higher percentile is better (lower in the candidate list).}
+\label{tab:main-bias}
+\begin{tabular}{llcccc}
+\toprule
+Metric / Target & CVS & Plain & Naive subtract & NRBdMF & Proposed \\
+\midrule
+area rate, depression & 2 & 0.112 & 0.024 & 0.084 & 0.112 \\
+area rate, antipsychotic & 2 & 0.136 & 0.096 & 0.084 & 0.144 \\
+area rate, epilepsy & 2 & 0.144 & 0.068 & 0.120 & 0.176 \\
+hard-neg.\ pct., epilepsy & 2 & 38.4 & 50.9 & 47.8 & 42.0 \\
+proconv.\ pct., epilepsy & 2 & 30.9 & 71.8 & 49.2 & 26.3 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=0.48\textwidth]{eval_auprc_by_method.png}
+\includegraphics[width=0.48\textwidth]{eval_hard_negative_ranks.png}
+\caption{Left: AUPRC by target, cross-validation scheme, and method. Right: hard-negative median rank percentile by target, scheme, and method; higher is better (hard negatives ranked further down the candidate list).}
+\label{fig:main-eval}
+\end{figure}
+
+Three things stand out. NRBdMF performs close to chance everywhere (AUPRC 0.02 to 0.05), confirming at the level of a full evaluation what the matrix diagnostics already suggested: a pure within-drug signed factorization, with no chemistry, has little to work with on an 18-indication matrix this sparse. The proposed method tracks plain closely on AUPRC, which is the precision-preservation property it was designed for, but on both bias metrics in Table~\ref{tab:main-bias} it is dominated by naive subtraction, often by a wide margin; the proconvulsant panel result is the clearest case, where naive subtraction pushes the panel from the 31st percentile (ranked as if these were good candidates) to the 72nd, while the proposed method moves it by less than 5 points and in the epilepsy CVS2 row actually moves it in the wrong direction. And contrary to the assumption that motivated this paper, naive subtraction's AUPRC cost is modest across every row we measured, never approaching the 62\% relative collapse an earlier informal analysis had reported.
+
+\subsection{Negative-control validity check}
+A method that identifies an area factor from negative controls should, if those controls are mechanistically independent of one another, leave each control's own predictability roughly unchanged when it is corrected using a factor estimated from the \emph{other} controls. We ran this leave-one-negative-control-out diagnostic for every (target, control) pair; 13 of 14 cells cluster within $\pm0.03$ of zero AUPRC change, consistent with the independence assumption. The exception, the anxiolytic control under both the antipsychotic and epilepsy targets, showed a large positive delta at 4 to 5 reruns ($+0.127$, $+0.126$) but also the largest standard deviation by a wide margin; re-running with 20 seeds shrank the mean to $+0.034$ while the standard deviation stayed essentially flat, the expected signature of small-sample noise from anxiolytic's 7-positive class rather than a genuine calibration failure (Figure~\ref{fig:calibration}).
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=0.6\textwidth]{negctrl_calibration.png}
+\caption{Negative-control self-calibration: AUPRC change for each control indication when corrected using an area factor estimated from the other controls. Values near zero are expected under mechanistic independence.}
+\label{fig:calibration}
+\end{figure}
+
+\subsection{Shrinkage follow-up}
+\label{sec:shrinkage}
+The most natural explanation for Table~\ref{tab:main-bias} is that the negative-control classes are small, 4 to 21 positives each, and the resulting area factor is mostly noise. We tested this directly with an empirical-Bayes-style shrinkage of the area factor, $A \leftarrow sA$ for $s\in\{0, 0.25, 0.5, 0.75, 1.0\}$, selecting $s$ and the factor rank via the same leave-one-negative-control-out diagnostic (excluding $s=0$ from candidacy, since a zeroed factor trivially achieves perfect calibration by reducing to plain). The diagnostic selected full-strength, unshrunk correction ($s=1$) for all three targets, and a full re-evaluation at the selected settings was statistically indistinguishable from the original unshrunk method on every metric in Table~\ref{tab:main-bias}. This rules out noisy estimation as the explanation. The more likely account is structural: the chemistry-plus-matrix-factorization representation already absorbs much of the organ-system signal a negative-control factor would otherwise capture, leaving little additional confound for the RUV-style correction to remove, or a residual-SVD identification strategy of this kind simply does not transfer well to an indication matrix this sparse, independent of rank or shrinkage. As a final check of that second possibility, we also tried an RUV-4-style joint alternating estimator, which re-estimates the area factor and the negative controls' own fits together over several rounds rather than from a single fixed residual, and it did not beat naive subtraction on the bias metrics either, so the failure is not specific to the two-stage RUV-2 mechanism.
+
+\section{Discussion and Limitations}
+This paper set out to build a more principled alternative to a correction we assumed would be too costly to use, and found instead that the naive correction works and the principled one does not add anything on top of it, for a cause we traced structurally rather than left as an unresolved coincidence. We think this is still a useful result for the field. The within-drug signed matrix factorization of Azuma et al.~\cite{azuma2022nrbdmf} is the closest prior method and it is not designed to remove organ-system confounding at all, so its weak performance here is not evidence against the general approach, only against relying on bare co-occurrence signal in a matrix this sparse. Negative-control identification of a latent confound is well established in genomics~\cite{gagnonbartsch2012ruv,gerard2021ruvstar,leek2007sva} and pharmacoepidemiology~\cite{lipsitch2010negativecontrols,negctrlreview2023}; our contribution is testing whether it transfers to cross-indication drug-repurposing confounding, and reporting, with the shrinkage and calibration diagnostics to back it up, that in this setting it does not beat a far simpler alternative.
+
+Several limitations bear directly on how much weight this result should carry. ATC and SIDER both cover under 10\% of the LINCS library, which caps how strong any ATC- or SIDER-grounded correction can be measured to be; a library with denser coverage of marketed drugs might tell a different story. The CVS3 cold-start-disease scheme is degenerate for any method, including ours, that needs some target-specific signal to estimate an indication-specific residual: with no such signal, plain and proposed provably collapse to the same cross-indication transfer score, so CVS3 does not actually test the debiasing mechanism and we report it for completeness rather than as evidence either way. We did not run a secondary evaluation against repoDB~\cite{brown2017repodb} or a temporal holdout by approval date, and we did not read DRDM~\cite{meng2025drdmb} or the closely related 2025 debiasing literature in full before finalizing this account; both are worth doing before treating the structural explanation in Section~\ref{sec:shrinkage} as final rather than the most likely of several candidates.
+
+\paragraph{Code availability.} \textbf{[AUTHOR ACTION REQUIRED, remove before submission: RECOMB 2027 requires a public, documented code repository linked in the paper for any submission developing new methods, as this one does. Replace this paragraph with the actual repository URL once one is published.]}
+
+\bibliographystyle{splncs04}
+\bibliography{refs}
+
+\end{document}

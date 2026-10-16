@@ -39,7 +39,7 @@ import numpy as np
 import pandas as pd
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import roc_auc_score
-from sklearn.model_selection import StratifiedKFold
+from sklearn.model_selection import StratifiedKFold, GroupKFold
 
 LAB_COLS = ["D", "I", "M"]
 K_FACTORS = 4
@@ -64,6 +64,26 @@ def cv_auroc(feature_mat, y, seeds, n_splits=5):
     return float(np.mean(aucs)), float(np.std(aucs))
 
 
+def grouped_cv_auroc(feature_mat, y, groups, seeds, n_splits=5):
+    """Same check, but with every sample from one donor forced into a single
+    fold, so no donor's expression signature can leak from train to test.
+    The 84 samples are 10 donors x ~8-9 technical replicates (lab x region),
+    not 84 independent draws; GroupKFold partitions on the donor, the actual
+    unit of exchangeability, rather than the sample."""
+    aucs = []
+    n = len(y)
+    for s in seeds:
+        order = np.random.RandomState(s).permutation(n)
+        gkf = GroupKFold(n_splits=n_splits)
+        preds = np.zeros(n)
+        for tr, te in gkf.split(feature_mat[order], y[order], groups=groups[order]):
+            clf = LogisticRegression(max_iter=2000, class_weight="balanced")
+            clf.fit(feature_mat[order][tr], y[order][tr])
+            preds[order[te]] = clf.predict_proba(feature_mat[order][te])[:, 1]
+        aucs.append(roc_auc_score(y, preds))
+    return float(np.mean(aucs)), float(np.std(aucs))
+
+
 def main():
     expr_nc = pd.read_csv("../data/ruv2_gender_controlgenes.csv", index_col=0)
     pheno = pd.read_csv("../data/ruv2_gender_pheno.csv", index_col=0)
@@ -72,6 +92,10 @@ def main():
     gender = (pheno["gender"] == "M").astype(float).values
     lab = pheno[LAB_COLS].values
     Yc = expr_nc.values.T  # 84 samples x 799 negative-control genes
+    # Donor ID is the first "_"-delimited token of each sample's CEL filename (e.g. "01" in
+    # "01_a_M_f_1.CEL"); 84 samples come from only 10 donors, each contributing ~8-9 technical
+    # replicates across the 3 labs and 3 regions, so samples are not independent units.
+    donor = np.array([s.split("_")[0] for s in pheno.index])
 
     X = np.column_stack([np.ones(len(gender)), gender])  # intercept + gender, the factor of interest
     proj = X @ np.linalg.inv(X.T @ X) @ X.T
@@ -92,6 +116,8 @@ def main():
         y = lab[:, i]
         gender_to_lab_mean[lc], gender_to_lab_std[lc] = cv_auroc(X[:, [1]], y, SEEDS)
         what_to_lab_mean[lc], what_to_lab_std[lc] = cv_auroc(What, y, SEEDS)
+        gender_to_lab_grp_mean, gender_to_lab_grp_std = grouped_cv_auroc(X[:, [1]], y, donor, SEEDS)
+        what_to_lab_grp_mean, what_to_lab_grp_std = grouped_cv_auroc(What, y, donor, SEEDS)
         rows.append(dict(
             lab=lc,
             naive_penalty_auroc=sign_free_auroc(naive_penalty, y),
@@ -101,6 +127,10 @@ def main():
             gender_predicts_lab_std=gender_to_lab_std[lc],
             what_predicts_lab_mean=what_to_lab_mean[lc],
             what_predicts_lab_std=what_to_lab_std[lc],
+            gender_predicts_lab_donorcv_mean=gender_to_lab_grp_mean,
+            gender_predicts_lab_donorcv_std=gender_to_lab_grp_std,
+            what_predicts_lab_donorcv_mean=what_to_lab_grp_mean,
+            what_predicts_lab_donorcv_std=what_to_lab_grp_std,
         ))
 
     out = pd.DataFrame(rows)
@@ -114,6 +144,16 @@ def main():
         print(f"  lab={lc}: AUROC = {gender_to_lab_mean[lc]:.3f} +/- {gender_to_lab_std[lc]:.3f}")
     print()
     print(out.round(3).to_string(index=False))
+    print()
+    print("Robustness check: the 84 samples are 10 donors x ~8-9 replicates (lab x region), not")
+    print("84 independent draws. Re-running what->lab and gender->lab with GroupKFold on donor")
+    print("(no donor split across train/test) instead of per-sample StratifiedKFold:")
+    for lc in LAB_COLS:
+        row = out[out.lab == lc].iloc[0]
+        print(f"  lab={lc}: gender->lab {row.gender_predicts_lab_donorcv_mean:.3f}+/-{row.gender_predicts_lab_donorcv_std:.3f}"
+              f" (per-sample: {row.gender_predicts_lab_mean:.3f}),  "
+              f"What->lab {row.what_predicts_lab_donorcv_mean:.3f}+/-{row.what_predicts_lab_donorcv_std:.3f}"
+              f" (per-sample: {row.what_predicts_lab_mean:.3f})")
     print()
     print("Wrote results/ruv2_alignment_check.csv")
 

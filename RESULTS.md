@@ -1,4 +1,4 @@
-# Results: Ranking Within the Therapeutic Area (Idea 2, RECOMB 2027)
+# Results: An Alignment Check for Debiasing Corrections (Idea 2, RECOMB 2027)
 
 All numbers below trace to a results/*.csv file produced by the code in code/, run on real data
 (ChEMBL, SIDER, LINCS/9,878-compound library already on disk, PubChem). Where something could not
@@ -576,6 +576,67 @@ are not competing to solve the same operational problem: naive subtraction targe
 membership directly, the bias metrics measure group membership, and the proposed method targets
 something residual to it by design. We no longer report this as an open question; this is the
 mechanism, measured directly rather than argued for.
+
+### Generalizing the result into a check: is this specific to our dataset?
+
+The section above explains why naive subtraction wins *here*. Reframing that into a reusable
+validity check for comparing debiasing corrections against bias-diagnostic metrics requires two
+further things, neither of which can be asserted without checking: (1) a structural reason the
+proposed method's penalty term behaves this way, independent of this dataset's numbers, and (2)
+confirmation that the premise behind that structural reason (the flags are explainable from the
+same representation the correction treats as already explained) actually holds here rather than
+being assumed.
+
+**(1) Orthogonality by construction.** The area factor `A` is built by `negative_control_area_factor`
+(`code/models.py`) as the leading left singular vectors of `R = Y[:, nc_idx] - P_hat[:, nc_idx]`
+(train rows), where `P_hat` is the already-fit per-indication logistic model's output on
+`Zrep = [chem_pca, Ufree]`. Because each per-indication model is fit by maximum-likelihood logistic
+regression, the GLM score equation at the fit guarantees `Zrep_tr.T @ W @ (y - p_hat) = 0` for the
+fitting weights `W` (class-balanced here): each residual column of `R` is exactly orthogonal to
+every column of `Zrep` on train rows, in the `W`-weighted inner product. Since SVD's left singular
+vectors of a matrix lie in that matrix's column space, `A` (a linear combination of `R`'s columns)
+inherits this exact orthogonality to `Zrep`. This is an algebraic fact about how `A` is estimated,
+true regardless of what the negative controls or target disease are. It says nothing by itself
+about whether a bias-metric flag `F` relates to `A`; that depends on whether `F` is itself
+predictable from `Zrep`.
+
+**(2) Is the premise true here?** Script: `code/14_representation_predicts_flag.py`. For each target
+and the same CVS2 splits used throughout, fit a plain logistic classifier on `Zrep` alone (train
+rows only, no negative-control information) to predict each bias-metric flag, and score its AUROC
+on the exact same non-indicated candidate population Section 5 above uses.
+
+**Result** (`results/representation_predicts_flag.csv`, mean ± std over 5 seeds, CVS2):
+
+| Target | Flag | AUROC of `Zrep` alone |
+|---|---|---|
+| depression | same-ATC-area | 0.718 ± 0.015 |
+| depression | hard-negative | 0.514 ± 0.066 |
+| antipsychotic | same-ATC-area | 0.706 ± 0.038 |
+| antipsychotic | hard-negative | 0.591 ± 0.065 |
+| epilepsy | same-ATC-area | 0.722 ± 0.040 |
+| epilepsy | hard-negative | 0.613 ± 0.040 |
+| epilepsy | proconvulsant | 0.695 ± 0.081 |
+
+The same-ATC-area flag is well predicted by `Zrep` alone on every target (0.706-0.722), close to
+naive subtraction's own 0.766-0.787: most of what makes a compound look like it belongs to the
+confounded area is already present in chemistry and the shared matrix-factorization embedding,
+before any negative-control information is added. The hard-negative and proconvulsant flags are
+predictable from `Zrep` too, but less uniformly and more weakly, from 0.514 for depression's hard
+negatives (indistinguishable from chance within one standard deviation) up to 0.695 for the
+epilepsy proconvulsant panel. The premise holds strongly for the same-ATC-area row and more weakly
+for the hard-negative rows; we report both, not just the clean case.
+
+**Together, (1) and (2) generalize the Section 5 finding beyond this dataset's specific numbers.**
+The recipe is: (a) confirm algebraically that a correction's penalty term is orthogonal to its base
+representation by construction (a property of the estimator, checkable without running anything),
+then (b) check empirically whether the bias metric's own flag is predictable from that same base
+representation. If (b) is true, (a) explains why that correction's penalty term will show little
+alignment with the flag regardless of the correction's substantive merit, and a naive baseline
+whose penalty term has no such orthogonality constraint will look better on that metric for
+reasons that have nothing to do with which correction removes more actual confounding. This recipe
+names nothing specific to drug repurposing, ATC codes, or RUV, and is what the paper's reframed
+headline contribution (the "alignment check") is built on, with this dataset serving as the
+demonstrating case study rather than the paper's own point.
 
 ## 6. Figures
 

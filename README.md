@@ -1,23 +1,30 @@
-# Ranking within the therapeutic area
+# An alignment check for debiasing corrections
 
-Code and results for a RECOMB 2027 submission testing whether negative-control indications
-(diseases in the same organ system, treated by a different mechanism), following the logic of
-removing unwanted variation in genomics (Gagnon-Bartsch & Speed 2012; Gerard & Stephens 2021) and
+Code and results for a RECOMB 2027 submission. The core contribution is a general validity check,
+the alignment check, for deciding whether a bias-diagnostic metric can even detect what a given
+debiasing correction removes: score the correction's own penalty term as a standalone classifier
+of whatever the metric flags, and treat near-chance AUROC as evidence the metric cannot see that
+mechanism at all, independent of the correction's substantive quality.
+
+The check is developed through a case study testing whether negative-control indications (diseases
+in the same organ system, treated by a different mechanism), following the logic of removing
+unwanted variation in genomics (Gagnon-Bartsch & Speed 2012; Gerard & Stephens 2021) and
 negative-control exposures in pharmacoepidemiology (Lipsitch et al. 2010), can remove therapeutic-area
 confounding from drug-repurposing rankings without the precision cost a naive correction is assumed
 to cause. The honest result: a naive area-score subtraction outperforms the proposed negative-control
 correction on every bias-diagnostic metric tested, under two independently implemented identification
-strategies (RUV-2-style and RUV-4-style).
-
-**Status: not yet published.** This README and the local commit history exist so the repository is
-ready to push in one step once the authors confirm it should be made public.
+strategies (RUV-2-style and RUV-4-style). Applying the alignment check explains why: the proposed
+method's penalty term is, by construction, exactly orthogonal to the representation its base model
+is fit on, and the bias metrics' own flags turn out to be substantially predictable from that same
+representation, so the metric was structurally unable to reward that correction's mechanism.
 
 ## Layout
 
-- `code/` -- numbered pipeline scripts (`01`-`11`) covering motivating-evidence reproduction, data
+- `code/` -- numbered pipeline scripts (`01`-`14`) covering motivating-evidence reproduction, data
   builds (ATC Level-1, full-library SIDER join, proconvulsant panel extraction), the four compared
-  methods, evaluation, and two rounds of follow-up (shrinkage, RUV-4 joint estimation), plus shared
-  modules (`common.py`, `models.py`, `indication_matrix.py`, `splits.py`, `hard_negatives.py`).
+  methods, evaluation, two rounds of follow-up (shrinkage, RUV-4 joint estimation), the
+  identifiability check, and the alignment check itself (`13`, `14`), plus shared modules
+  (`common.py`, `models.py`, `indication_matrix.py`, `splits.py`, `hard_negatives.py`).
 - `data/` -- derived data, several files symlinked into the sibling `ICHI2027_mgan` project for the
   base compound/label tables (see that project's `README.md` for rebuild instructions from public
   LINCS/ChEMBL sources); this project's own additions (`atc_level1.csv`, `sider_full.parquet`,
@@ -33,12 +40,6 @@ ready to push in one step once the authors confirm it should be made public.
   the panel is literature-curated from a public source, Chen, Albertson & Olson 2016, not drawn from
   an external database, and is disclosed as such rather than presented as one).
 - `DATA_PLAN.md` -- the dataset-provenance plan this project followed.
-
-## Before this repository is made public
-
-- Replace the symlinked paths in `data/` with either the real files or a fetch script.
-- Resolve the remaining `AUTHOR ACTION REQUIRED` item in `paper/main.tex` (code-availability URL).
-- Confirm no large raw intermediates are swept in by an unqualified `git add`.
 
 ## Reproducing
 

@@ -743,6 +743,28 @@ empirical finding in Table~\ref{tab:alignment} (proposed's penalty term at 0.497
 against every flag) does not depend on the Proposition being exact, since it was measured
 directly, not derived from it.
 
+### Running the alignment check against RUV-4, not just two-stage RUV-2
+
+A reviewer-style critique (external review pass) pointed out that the RUV-4-style joint
+alternating estimator (section 5's "Final follow-up: RUV-4-style joint estimation") was reported
+only as "did not beat naive subtraction either," with no direct alignment-check evidence of its
+own, unlike the two-stage RUV-2 correction that gets the full Table~\ref{tab:alignment} treatment.
+This is a fair ask: a second identification strategy failing the same way, for the same measured
+reason, is stronger evidence for the alignment account than the genomics replication alone, since
+it stays within the same domain but changes the estimating equation.
+
+`code/17_ruv4_alignment_check.py` extends `13_naive_vs_proposed_alignment.py`'s method to RUV-4:
+for each target, CVS2, 5 seeds, it runs `11_ruv4_joint.py`'s `ruv4_joint_fit`, forms the RUV-4
+area factor's penalty term the same way as RUV-2's (`A @ clf_k0.coef_[0][n_base:]`, the
+contribution the joint-estimated factor's coefficients would have made had they not been
+projected out), and scores it as a standalone classifier of the same three flags.
+
+Result (`results/ruv4_alignment_check.csv`): 0.499 same-area / 0.502 hard-negative (antipsychotic),
+0.501 / 0.501 (depression), 0.496 / 0.499 / 0.499 same-area/hard-negative/proconvulsant (epilepsy),
+std 0.002-0.006 across 5 seeds. This is the identical chance-level signature as two-stage RUV-2's
+0.497-0.501, confirmed under a mechanistically different estimator, not assumed to transfer. Added
+to the paper's Shrinkage follow-up paragraph (Section~\ref{sec:shrinkage}).
+
 ## 6. Figures
 
 - `figures/fig1_bemegride_top10.png` -- top-10 non-AED candidates, plain model (section 1a)

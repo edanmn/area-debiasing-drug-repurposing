@@ -699,6 +699,20 @@ the correction almost nothing. The two-step check correctly anticipates both out
 step-2 premise alone, before either empirical result was computed, which is a stronger test of
 generality than reproducing the same "naive wins" finding a second time would have been.
 
+**A repeated-measures check on the 1.000 ± 0.000 figure.** The 84 samples are not 84 independent
+draws: they come from only 10 donors (5 male, 5 female), each hybridized roughly 8-9 times across
+the 3 labs and 3 brain regions, and every donor contributes samples to every lab. Plain per-sample
+cross-validation could in principle let a model partly recognize a donor's expression signature in
+one fold and exploit it in another, inflating the lab-prediction AUROC above what would generalize
+to an unseen donor. We re-ran both the `What`->lab and gender->lab checks with `GroupKFold` on donor
+instead of per-sample `StratifiedKFold`, so no donor's samples ever appear in both train and test.
+The result is materially unchanged: `What`->lab AUROC is 0.953/1.000/0.982 (donor-grouped) versus
+0.953/1.000/0.983 (per-sample) for labs D/I/M, and gender->lab stays at chance under both schemes
+(0.504-0.508 donor-grouped, 0.387-0.406 per-sample). The near-perfect separability of lab from
+`What` is a real property of this batch-dominated dataset, not a cross-validation artifact; see
+`code/15_ruv2_genomics_generalization.py`'s `grouped_cv_auroc` and the extra columns it writes to
+`results/ruv2_alignment_check.csv`.
+
 ## 6. Figures
 
 - `figures/fig1_bemegride_top10.png` -- top-10 non-AED candidates, plain model (section 1a)

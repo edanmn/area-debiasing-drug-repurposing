@@ -713,6 +713,36 @@ The result is materially unchanged: `What`->lab AUROC is 0.953/1.000/0.982 (dono
 `code/15_ruv2_genomics_generalization.py`'s `grouped_cv_auroc` and the extra columns it writes to
 `results/ruv2_alignment_check.csv`.
 
+### Checking the Proposition's exactness claim against the models actually fit
+
+The Proposition in the paper (sec:alignment-check) was originally stated for an unregularized
+logistic-regression MLE, where the score equation gives exact orthogonality of the residual to
+the design matrix. The actual pipeline (`models.py:fit_per_indication_logreg`,
+`negative_control_area_factor`) fits every per-indication model with
+`sklearn.LogisticRegression(C=1.0, class_weight="balanced")`, which is L2-penalized (MAP), not
+unregularized MLE. The correct score equation for that fit is `X_tr^T W r_j = beta_hat_j / C`,
+which is exactly zero only as `C -> infinity`. This was caught in a fresh adversarial rigor pass,
+not assumed correct from the original derivation, and checked directly rather than argued.
+
+`code/16_orthogonality_check.py` confirms the corrected identity (`score_eq_gap_C1` is
+~0.11-0.14, i.e. the discrepancy between the literal LHS/RHS of the corrected equation is
+negligible, so the corrected math, not the original "=0" version, is the one that actually
+describes these fits) and quantifies the real gap: at the `C=1` used throughout the paper, the
+fraction of `A`'s variance lying inside `X`'s column space (`frac_var_in_X_C1`) is 0.34-0.40
+across depression/antipsychotic/epilepsy, not the near-zero exact orthogonality would require;
+at `C=100` (100x weaker regularization) it only drops to 0.34-0.38, so this is not a small-C
+artifact that vanishes under mild relaxation. `A`'s raw projection onto `X`'s span
+(`max_proj_C1`) is also 4-5x larger than a random vector of the same norm would give
+(`random_baseline`), confirming the deviation is a real structural fact about these regularized
+fits, not noise. The genomics domain (`code/15_ruv2_genomics_generalization.py`) is the one place
+in this paper where the Proposition's exact case is actually realized, since that domain's OLS
+fit is genuinely unregularized; results/orthogonality_check.csv carries the full per-target,
+per-seed numbers for the drug-repurposing domain. The paper's text was corrected to state this
+precisely rather than leave the stronger, incorrect "exact by construction" claim standing; the
+empirical finding in Table~\ref{tab:alignment} (proposed's penalty term at 0.497-0.501 AUROC
+against every flag) does not depend on the Proposition being exact, since it was measured
+directly, not derived from it.
+
 ## 6. Figures
 
 - `figures/fig1_bemegride_top10.png` -- top-10 non-AED candidates, plain model (section 1a)

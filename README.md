@@ -16,20 +16,26 @@ correction on every bias-diagnostic metric tested, under two independently imple
 strategies (RUV-2-style and RUV-4-style). Applying the alignment check explains why: the proposed
 method's penalty term is, by construction, exactly orthogonal to the representation its base model
 is fit on, and the bias metrics' own flags turn out to be substantially predictable from that same
-representation, so the metric was structurally unable to reward that correction's mechanism.
+representation, so the metric was structurally unable to reward that correction's mechanism. We
+re-ran both steps on a second domain, the gene-expression dataset RUV-2 was itself introduced on,
+and the two domains diverge exactly where the check predicts they should.
 
 ## Layout
 
-- `code/` -- numbered pipeline scripts (`01`-`14`) covering motivating-evidence reproduction, data
+- `code/` -- numbered pipeline scripts (`01`-`15`) covering motivating-evidence reproduction, data
   builds (ATC Level-1, full-library SIDER join, proconvulsant panel extraction), the four compared
   methods, evaluation, two rounds of follow-up (shrinkage, RUV-4 joint estimation), the
-  identifiability check, and the alignment check itself (`13`, `14`), plus shared modules
-  (`common.py`, `models.py`, `indication_matrix.py`, `splits.py`, `hard_negatives.py`).
+  identifiability check, the alignment check itself (`13`, `14`), and its re-run on a second
+  domain (`15`, `extract_ruv2_gender_data.R`), plus shared modules (`common.py`, `models.py`,
+  `indication_matrix.py`, `splits.py`, `hard_negatives.py`).
 - `data/` -- derived data, several files symlinked into the sibling `ICHI2027_mgan` project for the
   base compound/label tables (see that project's `README.md` for rebuild instructions from public
   LINCS/ChEMBL sources); this project's own additions (`atc_level1.csv`, `sider_full.parquet`,
   `proconvulsants.csv`, the nine extra negative-control `labels_*.csv` files) are reproducible from
   the public ChEMBL REST API, PubChem PUG-REST, and the already-on-disk raw SIDER export.
+  `ruv2_gender_controlgenes.csv` and `ruv2_gender_pheno.csv` are extracted from the Bioconductor
+  `RUVnormalizeData` package (see `code/extract_ruv2_gender_data.R` for provenance and the exact
+  source and version).
 - `results/` -- every CSV referenced in `RESULTS.md`.
 - `figures/` -- plots referenced in the paper.
 - `paper/` -- the LaTeX source (`main.tex`), bibliography (`refs.bib`), and compiled `main.pdf`.

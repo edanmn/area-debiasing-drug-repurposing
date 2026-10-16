@@ -638,6 +638,67 @@ names nothing specific to drug repurposing, ATC codes, or RUV, and is what the p
 headline contribution (the "alignment check") is built on, with this dataset serving as the
 demonstrating case study rather than the paper's own point.
 
+### Testing the check outside drug repurposing: RUV-2's own original data
+
+Script: `code/15_ruv2_genomics_generalization.py` (data extraction documented in
+`code/extract_ruv2_gender_data.R`). Everything above is one domain. The next honest question is
+whether the two-step check (orthogonality by construction, then an empirical test of whether the
+flag is predictable from the base representation) says anything outside drug repurposing, or
+whether it is really just a description of what happened to go right in this dataset.
+
+We re-ran it on the dataset RUV-2 itself was introduced on: Vawter et al. 2004's post-mortem brain
+gene expression study (12600 genes, 84 samples, 5 male/5 female donors across 3 labs and 3 brain
+regions), using the 799 housekeeping probesets from Eisenberg & Levanon 2003 that Gagnon-Bartsch &
+Speed 2012 used as negative controls. Here the base representation `X` is just the gender design
+matrix (intercept + sex, not a rich feature space), fit by ordinary least squares rather than
+logistic regression; the negative controls are 799 housekeeping genes instead of negative-control
+indications; `What`, the leading left singular vectors of the OLS residuals of the control genes
+on `X`, is the genomics analog of the area factor `A`. The confound this time is lab of origin, a
+real batch effect, not a chemistry-encoded organ-system area.
+
+**Step 1, orthogonality by construction, holds exactly, confirmed numerically rather than only
+asserted.** Each control gene's OLS residual satisfies the normal equations `X^T r = 0` exactly
+(`max|X^T R| = 1.97e-13`, floating-point zero), and because SVD's left singular vectors lie in the
+column space of the matrix being decomposed, `What` inherits this orthogonality to `X`
+(`max|X^T What| = 5.68e-15`). The algebraic argument in the paper's Proposition was written for a
+weighted logistic-regression MLE; here it holds just as exactly for an unweighted OLS fit, in a
+genuinely different domain, which is what "by construction" is supposed to mean.
+
+**Step 2 comes out differently here, and that difference is itself informative.** In the
+drug-repurposing case study, same-ATC-area membership was well predicted by `Zrep` alone
+(0.706-0.722 AUROC), which is why the orthogonalized area factor `A` carried little information
+about it. Here, lab membership is *not* well predicted by `X` (gender): 5-fold CV AUROC of
+0.387-0.406 across the three labs, mean ± std over 5 seeds, below chance if anything. The
+check predicts what should follow from that: if `X` carries almost no information about the
+confound, orthogonalizing `What` against `X` should not cost `What` much of its ability to track
+the confound, unlike the drug-repurposing case where orthogonalizing against a confound-carrying
+`Zrep` left the area factor at chance.
+
+That is exactly what happens. `results/ruv2_alignment_check.csv`, AUROC of each term as a
+standalone classifier of lab membership (sign-free, since a singular vector's sign is arbitrary):
+
+| Lab | Naive (raw control-gene mean) | `What` factor 1 | `What` norm (4 factors) |
+|---|---|---|---|
+| D | 0.732 | 0.943 | 0.689 |
+| I | 0.551 | 0.503 | 0.662 |
+| M | 0.757 | 0.897 | 0.506 |
+
+`What`, despite being exactly orthogonal to `X` by construction, is as informative about lab as
+naive's raw, unprojected control-gene summary, and more informative for two of the three labs. A
+full multinomial logistic fit on all four `What` columns (5-fold CV, 5 seeds) recovers lab almost
+perfectly (D: 0.953 ± 0.002, I: 1.000 ± 0.000, M: 0.983 ± 0.002), confirming `What`
+genuinely captures the batch confound it was built to capture; it is simply not orthogonal to lab,
+only to gender.
+
+**This is not a replication of the drug-repurposing result, and it should not be.** The two
+domains differ exactly where the check says they should: `Zrep` (chemistry + matrix factorization)
+is rich enough to leak the drug-repurposing confound, so orthogonalizing the correction against it
+erases the correction's visibility into that confound; the plain gender design matrix used in
+classical RUV-2 is not rich enough to leak the lab confound, so orthogonalizing against it costs
+the correction almost nothing. The two-step check correctly anticipates both outcomes from the
+step-2 premise alone, before either empirical result was computed, which is a stronger test of
+generality than reproducing the same "naive wins" finding a second time would have been.
+
 ## 6. Figures
 
 - `figures/fig1_bemegride_top10.png` -- top-10 non-AED candidates, plain model (section 1a)

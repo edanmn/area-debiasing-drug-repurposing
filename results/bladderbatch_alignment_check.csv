@@ -1,0 +1,2 @@
+n_samples,n_negctrl_probes,alpha_actual,alpha_weak,max_proj_actual,max_proj_weak,normal_eq_gap_actual,normal_eq_gap_weak,random_baseline_proj,cancer_predicts_batch_auroc,naive_predicts_batch_auroc,what_actual_predicts_batch_auroc,what_weak_predicts_batch_auroc
+57,45,10.0,0.01,11.46820819500278,0.032995779686999294,1.2789769243681803e-13,7.097469313654958e-14,13.246032678791817,0.7222723899180317,0.6190012531312766,0.6830567578945683,0.6838537950609468

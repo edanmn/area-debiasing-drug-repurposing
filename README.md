@@ -22,7 +22,7 @@ and the two domains diverge exactly where the check predicts they should.
 
 ## Layout
 
-- `code/` -- numbered pipeline scripts (`01`-`17`) covering motivating-evidence reproduction, data
+- `code/` -- numbered pipeline scripts (`01`-`18`) covering motivating-evidence reproduction, data
   builds (ATC Level-1, full-library SIDER join, proconvulsant panel extraction), the four compared
   methods, evaluation, two rounds of follow-up (shrinkage, RUV-4 joint estimation), the
   identifiability check, the alignment check itself (`13`, `14`), and its re-run on a second

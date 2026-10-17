@@ -340,8 +340,9 @@ split):
 | antipsychotic | anxiolytic | **+0.0343** | 0.129 | 15 | +0.1272 (n=4) |
 | epilepsy | anxiolytic | **+0.0342** | 0.129 | 15 | +0.1260 (n=4) |
 
-The mean delta shrank by ~3.7x (0.127->0.034) as reruns went from 4 to 15-20, while the standard
-deviation stayed essentially the same (~0.129) -- exactly the signature of small-sample noise
+The mean delta shrank by ~3.7x (0.127->0.034) as reruns went from 4 to 15-20; the standard deviation
+also dropped, from 0.249 (n=4) to 0.129 (n=15), roughly half, consistent with the original std itself
+being a noisy estimate from only 4 reruns. This is the signature of small-sample noise
 (SE = std/sqrt(n) shrinks as n grows, so the mean converges toward whatever the true small effect
 is, here now well within 1 SE of zero: SE=0.129/sqrt(15)=0.033, mean=0.034). **This settles the
 question**: the anxiolytic calibration cells were small-sample noise (anxiolytic has only 7

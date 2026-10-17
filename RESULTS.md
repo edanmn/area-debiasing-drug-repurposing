@@ -765,6 +765,80 @@ std 0.002-0.006 across 5 seeds. This is the identical chance-level signature as 
 0.497-0.501, confirmed under a mechanistically different estimator, not assumed to transfer. Added
 to the paper's Shrinkage follow-up paragraph (Section~\ref{sec:shrinkage}).
 
+### A third domain, harder than RUV-2's own gender/lab dataset: bladderbatch
+
+The gender/lab genomics replication (above) used RUV-2's own introductory dataset: a single
+binary covariate (gender), fit by unregularized OLS, exactly the idealized case the Proposition
+was originally misstated for. A reviewer-style critique pointed out that this is weak evidence
+for generality by itself: one domain with a rich, regularized representation (drug repurposing)
+and one with a single binary covariate and no regularization (genomics) leaves no intermediate
+case. This section reports a genuinely harder third domain: a multi-level (not binary) factor of
+interest, fit with real regularization (not idealized OLS), still inside the same negative-control/
+RUV family the paper already cites.
+
+**Dataset**: `bladderbatch` (Bioconductor, Leek, DOI 10.18129/B9.bioc.bladderbatch; original data
+Dyrskjot et al. 2004, *Cancer Research* 64(11):4040-4048, DOI 10.1158/0008-5472.CAN-03-3620; batch-
+effects review Leek et al. 2010, *Nature Reviews Genetics* 11:733-739, DOI 10.1038/nrg2825, both
+verified via Crossref before citing). 57 bladder samples, 22,283 Affymetrix HG-U133A probes,
+cancer status with THREE levels (Normal=8, Biopsy=9, Cancer=40, not binary) as the factor of
+interest, batch with FIVE levels (sizes 11/18/4/5/19) as the confound. Negative controls: the 45
+Affymetrix bacterial/phage poly-A spike-in and hybridization-control probes (`extract_bladderbatch_
+data.R` lists exactly which and why), which measure only technical variation and cannot carry
+biological signal by construction, a cleaner negative control in that specific sense than
+housekeeping genes. The remaining AFFX probes (actin, GAPDH, ISGF3A, 18S/28S rRNA, and the
+ambiguous M27830 series) were excluded because they are real human gene products that could carry
+genuine biological signal, unlike a true negative control.
+
+**Design** (`code/18_bladderbatch_generalization.py`): `X` = [intercept, Biopsy-dummy,
+Cancer-dummy] (Normal is the reference level), genuinely multivariate. For each of the 45
+negative-control probes, fit RIDGE regression (alpha=10, a real, non-trivial penalty) of its
+expression on `X`. The ridge normal equation is `X^T r_j = alpha * beta_hat_j`, the direct OLS
+analog of the corrected Proposition's `X_tr^T W r_j = beta_hat_j / C` for regularized logistic
+regression, same mechanism. Confirmed numerically to float precision (`1.28e-13` at alpha=10,
+`7.1e-14` at alpha=0.01, i.e. the corrected identity, not the original "=0" one, is what actually
+holds). `What` = leading 2 left singular vectors (scaled by singular value) of the stacked ridge
+residuals, the direct analog of the area factor `A`.
+
+**Step 1 (orthogonality)**: at alpha=10, `max|X^T What| = 11.47`, actually *smaller* than a
+random vector of the same norm (`13.25`), and shrinks to `0.03` at alpha=0.01 (near-unregularized),
+confirming the math without needing a large violation to make the point: here, even real
+regularization leaves a comparatively small deviation, unlike the drug-repurposing domain where
+the deviation was 4-5x the random-vector scale. This is itself a real, reportable finding, not a
+replication of the drug-repurposing magnitude.
+
+**Step 2 premise**: cancer status predicts batch at AUROC 0.722 (10 repeats of 3-fold stratified
+CV, the largest k the smallest batch level, n=4, supports; per-level: batch 1: 0.648, batch 2:
+0.537, batch 3: 0.949, batch 4: 0.949, batch 5: 0.527 -- batches 3 and 4 are each dominated by one
+cancer-status level in the raw cross-tab, hence near-perfectly predictable, while 1/2/5 mix
+multiple levels). This sits between the drug-repurposing domain's 0.70-0.72 and the gender/lab
+domain's 0.39-0.41, a genuinely intermediate case.
+
+**Step 3, the actual test**: naive (raw control-probe mean) predicts batch at AUROC 0.619.
+`What` at alpha=10 (real regularization) predicts batch at 0.683. `What` at alpha=0.01 (near-
+unregularized) predicts batch at 0.684, essentially identical regardless of regularization
+strength. **This does not cleanly replicate either earlier domain.** The simple directional
+heuristic ("X predicts F well, so orthogonalizing against X should suppress What's F-information")
+would have predicted What should lose most of its batch-information here, given cancer
+predicts batch at a level (0.722) comparable to the drug-repurposing domain's same-ATC-area
+predictability (0.706-0.722), where the orthogonalized term DID fall to chance (0.497-0.501). It
+did not: `What` stays at 0.68, close to or above naive's own 0.62, nowhere near chance.
+
+**Why, honestly assessed rather than explained away**: `X` here is only 2 columns (3-level cancer
+status). Even at a real, moderate correlation with batch, a 2-dimensional `X` cannot possibly
+absorb all of the ways a 45-probe residual space could still track batch; there is abundant
+residual capacity left for `What` to independently capture batch-related variance, unlike the
+drug-repurposing domain's 48-dimensional `Zrep`, rich enough to nearly exhaust same-ATC-area's
+predictable signal. The check's second step, then, depends on whether `X` is representationally
+rich enough to exhaust `F`'s predictable variance, not merely on a raw predictability number. This
+is a genuine refinement to how the check should be applied and interpreted, surfaced by a harder
+domain, not a clean third confirmation of the original two-domain story. It is reported as such in
+the paper (Section~\ref{sec:ruv-generalization}), with the sample-size caveat (57 samples, one
+batch level at n=4) stated plainly rather than smoothed over.
+
+No further dataset search followed this result. It is reported as the first honest run produced
+it, consistent with this project's standing practice of not re-running or re-selecting after a
+result comes in.
+
 ## 6. Figures
 
 - `figures/fig1_bemegride_top10.png` -- top-10 non-AED candidates, plain model (section 1a)

@@ -761,7 +761,7 @@ projected out), and scores it as a standalone classifier of the same three flags
 
 Result (`results/ruv4_alignment_check.csv`): 0.499 same-area / 0.502 hard-negative (antipsychotic),
 0.501 / 0.501 (depression), 0.496 / 0.499 / 0.499 same-area/hard-negative/proconvulsant (epilepsy),
-std 0.002-0.006 across 5 seeds. This is the identical chance-level signature as two-stage RUV-2's
+std 0.001-0.006 across 5 seeds. This is the identical chance-level signature as two-stage RUV-2's
 0.497-0.501, confirmed under a mechanistically different estimator, not assumed to transfer. Added
 to the paper's Shrinkage follow-up paragraph (Section~\ref{sec:shrinkage}).
 

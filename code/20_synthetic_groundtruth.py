@@ -28,6 +28,20 @@ What this measures, that real data cannot:
   4. Top-50 false-positive rate among the TRUE top-tertile-z_area compounds (mirrors Table 2's
      same-ATC-area metric, but against ground truth instead of a proxy flag)
 
+A third round of review (pasted inline, Issue 2 of that round) asked for two more scoring approaches,
+to separate "does estimation fail" from "does application of a correctly estimated factor fail":
+  5. direct_subtract: fit plain, then subtract a calibrated multiple of the ALREADY-ESTIMATED
+     proposed factor A_oos directly from the score (no joint refit-and-project step), i.e. apply
+     the proposed method's own estimated confound the same crude way naive applies raw_rate. If
+     this removes the confound where the proposed method's actual projection step does not, the gap
+     is in HOW the estimated factor is applied, not in estimating it.
+  6. oracle: the same fit-with-extra-and-project mechanics as the proposed method, but given the
+     TRUE z_area (not an estimated factor) as the extra column. This is the ceiling: the best this
+     application mechanism could do with a perfectly estimated confound. If oracle still leaves the
+     true confound in the ranked list, the gap is in the projection mechanism, not in estimation
+     quality at all; if oracle removes it but "proposed" does not, imperfect estimation (0.83 AUROC,
+     not 1.0) is a meaningful part of the gap too.
+
 Writes: results/synthetic_groundtruth.csv
 """
 import sys
@@ -96,7 +110,8 @@ def main():
         # plain: one logistic regression on X_chem, train rows only
         clf_plain = LogisticRegression(max_iter=500, C=1.0, class_weight="balanced").fit(
             X[train_idx], y_full[train_idx])
-        s_plain = sigmoid(X @ clf_plain.coef_[0] + clf_plain.intercept_[0])
+        logit_plain = X @ clf_plain.coef_[0] + clf_plain.intercept_[0]
+        s_plain = sigmoid(logit_plain)
 
         # naive subtraction: raw negative-control rate penalty
         nc_rate = np.mean([Y[d] for d in nc_names], axis=0)
@@ -117,6 +132,21 @@ def main():
         s_proposed = score_project(clf_db, X, n_base)
         A_oos = project_area_factor_oos(A, X, train_idx)
 
+        # direct_subtract: calibrate a univariate logistic fit of y on the ALREADY-ESTIMATED proposed
+        # factor A_oos, then subtract that calibrated contribution straight from the plain logit --
+        # the proposed method's own estimated confound, applied the same crude way naive applies
+        # raw_rate, instead of jointly refit-and-project.
+        calib = LogisticRegression(max_iter=500, C=1.0, class_weight="balanced").fit(
+            A_oos[train_idx], y_full[train_idx])
+        coef_direct = calib.coef_[0][0]
+        s_direct_subtract = sigmoid(logit_plain - coef_direct * A_oos[:, 0])
+
+        # oracle: same fit-with-extra-and-project mechanics as "proposed", but given the TRUE
+        # z_area (not an estimated factor) as the extra column -- the ceiling for this application
+        # mechanism under perfect estimation.
+        clf_oracle, n_base_oracle = fit_with_extra(X, z_area[:, None], y_full, train_idx)
+        s_oracle = score_project(clf_oracle, X, n_base_oracle)
+
         cand = test_rows[y_full[test_rows] == 0]
         high_confound = z_area > np.quantile(z_area, 2 / 3)  # ground-truth analog of "same-area flag"
 
@@ -130,10 +160,14 @@ def main():
             auprc_plain=average_precision_score(y_full[test_rows], s_plain[test_rows]),
             auprc_naive=average_precision_score(y_full[test_rows], s_naive[test_rows]),
             auprc_proposed=average_precision_score(y_full[test_rows], s_proposed[test_rows]),
+            auprc_direct_subtract=average_precision_score(y_full[test_rows], s_direct_subtract[test_rows]),
+            auprc_oracle=average_precision_score(y_full[test_rows], s_oracle[test_rows]),
             top50_confound_base_rate=high_confound[cand].mean(),
             top50_confound_plain=top50_confound_rate(s_plain),
             top50_confound_naive=top50_confound_rate(s_naive),
             top50_confound_proposed=top50_confound_rate(s_proposed),
+            top50_confound_direct_subtract=top50_confound_rate(s_direct_subtract),
+            top50_confound_oracle=top50_confound_rate(s_oracle),
             corr_naive_penalty_vs_truez=np.corrcoef(ar[cand], z_area[cand])[0, 1],
             auroc_naive_penalty_vs_truez=roc_auc_score(high_confound[cand], ar[cand]),
             auroc_proposed_factor_raw_vs_truez=sign_free_auroc(A[cand, 0], high_confound[cand]),

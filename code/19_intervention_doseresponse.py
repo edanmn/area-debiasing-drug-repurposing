@@ -42,11 +42,20 @@ checked rather than only asserted:
   rel_coef_diff: ||coef_base - clf_plain.coef_|| / ||clf_plain.coef_|| -- how much adding A to the
     fit moves the base coefficients away from the plain model's own.
 
+A fifth round of review (pasted inline, Issue A) pointed out that this correlation, close to 1 but
+not exactly 1, does not bound how much s_plain's and s_proposed's TOP-50 RANKINGS overlap: near a
+cutoff, a high overall correlation is compatible with substantial membership churn at exactly the
+threshold a bias metric uses. Added directly:
+  top50_overlap_plain_proposed: |top50(s_plain) INTERSECT top50(s_proposed, alpha=0)| / 50, on the
+    same non-indicated candidate pool the paper's bias metrics use.
+  rank_corr_plain_proposed: Spearman rank correlation of s_plain vs s_proposed on that same pool.
+
 Writes: results/intervention_doseresponse.csv
 """
 import sys
 import numpy as np
 import pandas as pd
+from scipy.stats import spearmanr
 
 sys.path.insert(0, ".")
 from indication_matrix import build_matrix, negative_controls, AREA_OF, ALL_DISEASES
@@ -111,6 +120,23 @@ def main():
             rel_coef_diff = (np.linalg.norm(coef_base - clf_plain.coef_[0])
                               / np.linalg.norm(clf_plain.coef_[0]))
 
+            # A fifth round of review (pasted inline, Issue A) pointed out that a high correlation
+            # between s_plain and the jointly-refit base-only score does not bound how much their
+            # top-50 RANKINGS overlap: near a cutoff, small score differences can flip membership
+            # even when the two scores track each other closely overall. Measured directly, on the
+            # same candidate pool (non-indicated test rows) and the same k=50 used throughout the
+            # paper's bias metrics, and with Spearman rank correlation (robust to the nonlinearity a
+            # cutoff-based metric actually cares about, unlike Pearson corr above).
+            sub_rows = test_rows[y_full[test_rows] == 0]
+            s_proposed_a0 = sigmoid(base_logit)
+            k50 = min(50, len(sub_rows))
+            top50_plain = set(sub_rows[np.argsort(-s_plain[sub_rows])][:k50])
+            top50_proposed_a0 = set(sub_rows[np.argsort(-s_proposed_a0[sub_rows])][:k50])
+            top50_overlap_plain_proposed = (len(top50_plain & top50_proposed_a0) / k50
+                                             if k50 else np.nan)
+            rank_corr_plain_proposed = (spearmanr(s_plain[sub_rows], s_proposed_a0[sub_rows]).correlation
+                                         if len(sub_rows) > 2 else np.nan)
+
             for alpha in ALPHAS:
                 s_naive_dose = s_plain - alpha * LAMBDA_NAIVE * ar
                 s_proposed_dose = sigmoid(base_logit + alpha * area_logit)
@@ -122,7 +148,9 @@ def main():
                                area_rate_top50=area_rate_top50, area_base_rate=base_rate,
                                hardneg_pct=hardneg_pct,
                                corr_splain_vs_jointbase=corr_splain_vs_jointbase,
-                               rel_coef_diff=rel_coef_diff)
+                               rel_coef_diff=rel_coef_diff,
+                               top50_overlap_plain_proposed=top50_overlap_plain_proposed,
+                               rank_corr_plain_proposed=rank_corr_plain_proposed)
                     if target == "epilepsy":
                         row["proconv_pct"] = run_eval.hard_neg_rank_pct(s, test_rows, proconv_mask_all)
                     rows.append(row)
@@ -135,6 +163,10 @@ def main():
     print("\n=== s_plain vs jointly-refit base-only score: not generally the same quantity ===")
     print(out.drop_duplicates(["target", "seed"])
           .groupby("target")[["corr_splain_vs_jointbase", "rel_coef_diff"]].mean().round(3))
+    print("\n=== top-50 overlap and rank correlation, s_plain vs s_proposed (alpha=0) ===")
+    print(out.drop_duplicates(["target", "seed"])
+          .groupby("target")[["top50_overlap_plain_proposed", "rank_corr_plain_proposed"]]
+          .mean().round(3))
     print("\nWrote results/intervention_doseresponse.csv")
 
 

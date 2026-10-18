@@ -1309,6 +1309,127 @@ significance fragile; concentration of its signal in one seed still is. The hone
 concern, fragile under a different, equally legitimate one. Same-ATC-area needs no such hedge,
 clearing every version of every test tried, including this one, by a wide margin.
 
+## 5o. Top-50 overlap and rank correlation between $s_{\text{plain}}$ and $s_{\text{proposed}}$ (a
+fifth round of review, pasted inline, Issue A)
+
+5l measured $\mathrm{corr}(s_{\text{plain}}, \sigma(\hat\beta_X^\top x))=0.96$-$1.00$ and argued the
+two scores are close but not identical. This review's objection is sharp and correct on its own
+terms: a high aggregate correlation does not bound how much two scores' TOP-50 RANKINGS overlap,
+since near a cutoff a small, consistent score shift can flip membership for compounds clustered
+right around the threshold, exactly where a bias metric defined by a top-k cutoff is most sensitive.
+Correlation is the wrong statistic to answer "do the intervention test's predictions track actual
+plain-to-proposed rank changes"; top-50 overlap and rank correlation are the right ones, and they
+were missing.
+
+Added directly to `code/19_intervention_doseresponse.py`, on the same non-indicated candidate pool
+and the same $k=50$ the paper's own bias metrics use: `top50_overlap_plain_proposed` (the fraction
+of $s_{\text{plain}}$'s top 50 also in $s_{\text{proposed}}$'s top 50) and
+`rank_corr_plain_proposed` (Spearman correlation of the two scores over that same pool), 5-seed mean:
+
+| Target | top-50 overlap | rank correlation (Spearman) |
+|---|---|---|
+| antipsychotic | 0.952 | 0.995 |
+| betablocker | 0.984 | 1.000 |
+| depression | 0.928 | 0.985 |
+| epilepsy | 0.836 | 0.978 |
+| lipid | 0.984 | 1.000 |
+
+The reviewer's concern was real in principle and the measurement bears it out in direction: overlap
+is lower than the raw correlation alone would suggest, and lowest for epilepsy specifically, the one
+target whose base coefficients shift the most under the joint refit (5l's `rel_coef_diff`=0.116).
+But in practice the effect is modest: even epilepsy keeps 84% of its top-50 membership and a 0.978
+rank correlation, so the plain-to-proposed divergence the intervention test measures is not being
+hidden by cutoff-sensitive churn the aggregate correlation could not see. main.tex's Section 4.1 now
+reports this range alongside the correlation, rather than the correlation alone.
+
+## 5p. More independent synthetic seeds, paired confidence intervals, and effect size for
+fit-then-project vs. direct subtraction (a fifth round of review, pasted inline, Issue B)
+
+5d and 5k reported the synthetic ground-truth experiment over 5 seeds, and 5m's noise sweep reused
+those same 5. This review is right that 5 seeds is limited evidence of stability for what the paper
+calls out as a central methodological finding, and asked specifically for more independent datasets,
+paired effect sizes, and confidence intervals on the fit-then-project vs. direct-subtraction gap.
+
+`SEEDS` in `code/20_synthetic_groundtruth.py` grew from 5 to 30; each seed redraws $X$, the area
+loadings, every disease's mechanism coefficients, and every Bernoulli label independently in
+`simulate()`, so these are 30 independent synthetic datasets under the same generative family, not
+30 resamples of one fixed dataset. `code/26_confound_noise_sweep.py` imports the same `SEEDS`, so its
+sweep now uses the identical 30 datasets at every noise level. Both scripts report a seed-level 95%
+CI (t-distribution) on every mean, and a paired Cohen's $d_z$ and paired $t$-test specifically for
+proposed vs. direct-subtract, across the same seeds both scores were computed on:
+
+| quantity | 5-seed value (prior) | 30-seed value | 95% CI |
+|---|---|---|---|
+| AUPRC plain/naive/proposed | 0.483/0.302/0.482 | 0.484/0.273/0.485 | - |
+| top-50 confound: plain/naive/proposed/direct-sub/oracle | 0.656/0.480/0.676/0.460/0.26 | 0.640/0.465/0.661/0.443/0.230 | within $\pm0.03$ throughout |
+| proposed's factor AUROC vs. true confound | 0.83 | 0.836 | - |
+| paired (proposed $-$ direct-subtract) | 0.22 (point estimate, 5 seeds) | 0.218 | (0.191, 0.245), $d_z=3.02$, $t=16.56$, $p=2.5\times10^{-16}$ |
+
+The headline numbers barely moved between 5 and 30 seeds (biggest shift: naive's AUPRC, 0.302 to
+0.273, still well above proposed's area-metric cost), and the paired gap between fit-then-project
+and direct subtraction is large and tight: 0.218 with a 95% CI of (0.191, 0.245), nowhere near zero,
+Cohen's $d_z=3.0$ (a very large standardized effect). This is good news for the paper's central
+synthetic claim: it was not an artifact of an underpowered 5-seed comparison.
+
+The noise sweep's per-$\sigma$ paired statistics are a more interesting, more honest finding than the
+single-number "widest around $\sigma=0.5$-$1.0$" summary 5m gave:
+
+| $\sigma$ | fit-project | direct-sub | paired diff | 95% CI | $d_z$ |
+|---|---|---|---|---|---|
+| 0.00 (oracle, no noise) | 0.230 | 0.203 | 0.027 | (0.000, 0.055) | 0.38 |
+| 0.25 | 0.333 | 0.242 | 0.091 | (0.060, 0.123) | 1.08 |
+| 0.50 | 0.469 | 0.306 | 0.163 | (0.146, 0.180) | 3.58 |
+| 1.00 (real method's AUROC region) | 0.583 | 0.449 | 0.135 | (0.116, 0.154) | 2.63 |
+| 1.50 | 0.610 | 0.518 | 0.092 | (0.069, 0.115) | 1.50 |
+| 2.00 | 0.624 | 0.558 | 0.066 | (0.051, 0.081) | 1.69 |
+| 3.00 | 0.633 | 0.596 | 0.037 | (0.024, 0.050) | 1.06 |
+
+At $\sigma=0$, the noise-free oracle estimate, the paired gap's 95% CI lower bound sits exactly at
+0.000: with 5 seeds this looked like a clear, if small, gap (0.064); with 30 seeds it is barely
+distinguishable from zero. The gap is not a baseline property of the two mechanisms competing on a
+perfect estimate; it is specifically a property of estimation noise, peaking hard at moderate noise
+($\sigma=0.5$, $d_z=3.58$) and in the real method's own estimation-quality region ($\sigma=1.0$,
+realized AUROC 0.837 against the real method's 0.836), then shrinking back toward zero at high noise
+as both mechanisms converge on the uncorrected baseline. main.tex's Section 5.7/5d text is rewritten
+to state the paired CI and this non-monotonic, noise-dependent shape, rather than the single range
+the 5-seed version reported.
+
+## 5q. Diagnostic-flag suppression is not validated drug-repurposing benefit (a fifth round of
+review, pasted inline, Issue D)
+
+This review raises a scoping point rather than a numerical one: Table 2 shows naive subtraction
+removes more same-ATC-area compounds from the top 50 than proposed does, usually at a modest AUPRC
+cost, but nothing in the paper shows that a candidate list with fewer same-area compounds is actually
+a better set of drug-repurposing leads. Same-ATC-area membership is also exactly the kind of feature
+genuine therapeutic plausibility can carry (drugs active in the same organ system can be mechanistically
+related candidates, not only confounded ones), so "naive wins the bias metric" and "naive gives better
+candidates" are not the same claim, and the paper's prose came close to treating them as one.
+
+No experiment resolves which same-area compounds removed by naive are false positives being
+correctly screened out versus genuine candidates being incorrectly screened out; that would need an
+independent ground-truth source for repurposing plausibility within the confounded area, which this
+paper does not have. Given the paper's contribution is explicitly methodological (does a correction's
+own penalty term track what a bias metric flags, Section 4.1 onward), not a therapeutic-discovery
+claim, the honest fix is to state the distinction rather than to run an experiment this data cannot
+support. main.tex's Discussion now says this directly: winning the bias metric is suppressing a
+flagged signal, not a validated improvement in candidate quality.
+
+## 5r. Issue C (confirmation, no change) and the presentation request (a fifth round of review)
+
+Issue C of this review round explicitly endorsed 5n's "real under one test, fragile under another"
+characterization of epilepsy's proconvulsant flag and asked that it be kept rather than strengthened
+in either direction. No change was needed; main.tex's Table 3 discussion already reads that way.
+
+The review's presentation note is correct that the paper is dense and that 5o/5p's new numbers have
+no dedicated figure or table in the 10-page body. Given the body is already at its page limit (10
+pages of body, References starting exactly on page 11, reached only after several earlier rounds of
+trimming), adding new floats here would require cutting existing content to make room, which was not
+done; 5o's and 5p's full tables live in this file instead, and main.tex's prose states the headline
+numbers (top-50 overlap range, the paired CI and effect size) inline. If venue formatting allows a
+supplementary appendix beyond the main body, that would be the natural place for the fuller tables
+above; this was not pursued without the user's direction on whether RECOMB's submission format
+permits it.
+
 ## 5i. Cold-start compounds and the shared MF embedding (second external review, Issue 5)
 
 The second review also asked how the shared MF embedding is obtained for compounds with zero

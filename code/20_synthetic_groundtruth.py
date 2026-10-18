@@ -28,6 +28,15 @@ What this measures, that real data cannot:
   4. Top-50 false-positive rate among the TRUE top-tertile-z_area compounds (mirrors Table 2's
      same-ATC-area metric, but against ground truth instead of a proxy flag)
 
+A fifth round of review (pasted inline, Issue B) asked for more independent synthetic datasets, paired
+effect sizes, and confidence intervals, particularly for fit-then-project vs direct-subtract, since 5
+seeds is limited evidence of stability for the paper's central methodological claim. SEEDS below grew
+from 5 to 30: each seed redraws X, w_area, all betas, and every Bernoulli label from scratch (see
+simulate()), so these are 30 independent synthetic datasets under the same generative family, not 30
+resamples of one fixed dataset. main() now reports a 95% CI (seed-level, t-distribution) on every
+mean below, and a paired effect size (Cohen's d_z, mean paired difference over its SD across the SAME
+30 seeds) for proposed vs direct_subtract specifically, the comparison this round of review asked for.
+
 A third round of review (pasted inline, Issue 2 of that round) asked for two more scoring approaches,
 to separate "does estimation fail" from "does application of a correctly estimated factor fail":
   5. direct_subtract: fit plain, then subtract a calibrated multiple of the ALREADY-ESTIMATED
@@ -47,6 +56,7 @@ Writes: results/synthetic_groundtruth.csv
 import sys
 import numpy as np
 import pandas as pd
+from scipy import stats
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import average_precision_score, roc_auc_score
 
@@ -68,7 +78,7 @@ D_CHEM = 30
 N_DISEASES_IN_AREA = 4   # target + 3 negative controls
 S_MECH = 1.5
 S_CONF = 1.3
-SEEDS = [0, 1, 2, 3, 4]
+SEEDS = list(range(30))
 LAMBDA_NAIVE = 2.0
 
 
@@ -177,6 +187,28 @@ def main():
     out = pd.DataFrame(rows)
     out.to_csv("../results/synthetic_groundtruth.csv", index=False)
     print(out.mean(numeric_only=True).round(3))
+
+    def ci95(x):
+        x = np.asarray(x, dtype=float)
+        n = len(x)
+        se = x.std(ddof=1) / np.sqrt(n)
+        half = stats.t.ppf(0.975, n - 1) * se
+        return x.mean(), x.mean() - half, x.mean() + half
+
+    print(f"\n=== 95% CI over {len(SEEDS)} independent seeds (t-distribution) ===")
+    for col in ["top50_confound_plain", "top50_confound_naive", "top50_confound_proposed",
+                "top50_confound_direct_subtract", "top50_confound_oracle"]:
+        m, lo, hi = ci95(out[col])
+        print(f"{col}: {m:.3f} ({lo:.3f}, {hi:.3f})")
+
+    diff = out["top50_confound_proposed"].values - out["top50_confound_direct_subtract"].values
+    d_m, d_lo, d_hi = ci95(diff)
+    cohens_dz = diff.mean() / diff.std(ddof=1)
+    t_stat, p_val = stats.ttest_1samp(diff, 0.0)
+    print(f"\n=== paired proposed vs direct_subtract (fit-then-project vs direct subtraction), "
+          f"same {len(SEEDS)} seeds ===")
+    print(f"mean paired difference: {d_m:.3f} ({d_lo:.3f}, {d_hi:.3f})  "
+          f"Cohen's d_z={cohens_dz:.2f}  paired t={t_stat:.2f}  p={p_val:.2e}")
     print("\nWrote results/synthetic_groundtruth.csv")
 
 

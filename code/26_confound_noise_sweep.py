@@ -22,11 +22,19 @@ noise-free direct-subtract-on-the-true-confound baseline. As sigma increases, bo
 degrades identically; the question is which one's top-50 true-confound rate rises toward (or past)
 naive's own level faster.
 
+A fifth round of review (pasted inline, Issue B) asked for paired effect sizes and confidence
+intervals for exactly this fitproject-vs-directsub comparison, and for more independent synthetic
+datasets rather than 5. SEEDS is imported from 20_synthetic_groundtruth, where it was grown from 5
+to 30 for the same reason, so this sweep now reuses those same 30 independent datasets at each
+sigma; main() reports, per sigma, a paired 95% CI and Cohen's d_z for (fitproject - directsub)
+across those 30 seeds.
+
 Writes: results/confound_noise_sweep.csv
 """
 import sys
 import numpy as np
 import pandas as pd
+from scipy import stats
 from sklearn.linear_model import LogisticRegression
 
 sys.path.insert(0, ".")
@@ -85,6 +93,21 @@ def main():
     print(out.groupby("sigma")[["realized_corr_zhat_ztrue", "realized_auroc_zhat_vs_flag",
                                  "top50_confound_fitproject",
                                  "top50_confound_directsub"]].mean().round(3).to_string())
+
+    def ci95(x):
+        x = np.asarray(x, dtype=float)
+        n = len(x)
+        se = x.std(ddof=1) / np.sqrt(n)
+        half = stats.t.ppf(0.975, n - 1) * se
+        return x.mean(), x.mean() - half, x.mean() + half
+
+    print(f"\n=== paired (fitproject - directsub), same {len(SEEDS)} seeds at each sigma ===")
+    for sigma in SIGMAS:
+        sub = out[out.sigma == sigma]
+        diff = sub["top50_confound_fitproject"].values - sub["top50_confound_directsub"].values
+        d_m, d_lo, d_hi = ci95(diff)
+        cohens_dz = diff.mean() / diff.std(ddof=1) if diff.std(ddof=1) > 0 else np.nan
+        print(f"sigma={sigma:.2f}: mean diff={d_m:.3f} ({d_lo:.3f}, {d_hi:.3f})  d_z={cohens_dz:.2f}")
     print("\nWrote results/confound_noise_sweep.csv")
 
 

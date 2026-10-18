@@ -27,6 +27,21 @@ DOES respond to this mechanism (Table 3's near-chance standalone AUROC, where it
 evidence of blindness). If they stay flat while naive's visibly move, that is the direct,
 intervention-based version of the alignment claim the standalone-AUROC proxy only gestured at.
 
+A fourth round of review (pasted inline, Issue A) pointed out that the paper's "penalty term" P for
+the proposed method is defined as gamma^T A_oos (the area-factor coefficients' contribution, dropped
+at scoring time: s_proposed = s_joint - P), not as s_plain - s_proposed (the full difference between
+the originally-fit plain model and the refit-then-projected proposed model). These are generally not
+equal, since refitting jointly with the extra factor A also changes the base coefficients
+(coef_base, from clf_db) away from the separately-fit plain model's own coefficients (clf_plain).
+Every alignment-check and permutation-test claim in this paper is about P = gamma^T A_oos
+specifically, the quantity the correction mechanism actually drops; this script adds a direct,
+per-seed measurement of how much that differs from the plain-to-proposed gap, so the distinction is
+checked rather than only asserted:
+  corr_splain_vs_jointbase: corr(s_plain, sigmoid(base_logit)) on test rows -- how similar the
+    plain fit's score is to the jointly-refit model's base-only (A-dropped) score.
+  rel_coef_diff: ||coef_base - clf_plain.coef_|| / ||clf_plain.coef_|| -- how much adding A to the
+    fit moves the base coefficients away from the plain model's own.
+
 Writes: results/intervention_doseresponse.csv
 """
 import sys
@@ -92,6 +107,10 @@ def main():
             base_logit = Zrep @ coef_base + clf_db.intercept_[0]
             area_logit = A_oos @ coef_A
 
+            corr_splain_vs_jointbase = np.corrcoef(s_plain[test_rows], sigmoid(base_logit)[test_rows])[0, 1]
+            rel_coef_diff = (np.linalg.norm(coef_base - clf_plain.coef_[0])
+                              / np.linalg.norm(clf_plain.coef_[0]))
+
             for alpha in ALPHAS:
                 s_naive_dose = s_plain - alpha * LAMBDA_NAIVE * ar
                 s_proposed_dose = sigmoid(base_logit + alpha * area_logit)
@@ -101,7 +120,9 @@ def main():
                     hardneg_pct = run_eval.hard_neg_rank_pct(s, test_rows, hard_col)
                     row = dict(target=target, seed=seed, method=method, alpha=alpha,
                                area_rate_top50=area_rate_top50, area_base_rate=base_rate,
-                               hardneg_pct=hardneg_pct)
+                               hardneg_pct=hardneg_pct,
+                               corr_splain_vs_jointbase=corr_splain_vs_jointbase,
+                               rel_coef_diff=rel_coef_diff)
                     if target == "epilepsy":
                         row["proconv_pct"] = run_eval.hard_neg_rank_pct(s, test_rows, proconv_mask_all)
                     rows.append(row)
@@ -111,6 +132,9 @@ def main():
     print(out.groupby(["target", "method", "alpha"])[
         [c for c in ["area_rate_top50", "hardneg_pct", "proconv_pct"] if c in out.columns]
     ].mean().round(3))
+    print("\n=== s_plain vs jointly-refit base-only score: not generally the same quantity ===")
+    print(out.drop_duplicates(["target", "seed"])
+          .groupby("target")[["corr_splain_vs_jointbase", "rel_coef_diff"]].mean().round(3))
     print("\nWrote results/intervention_doseresponse.csv")
 
 

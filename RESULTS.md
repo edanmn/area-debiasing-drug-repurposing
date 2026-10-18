@@ -1037,13 +1037,21 @@ compounds either source can speak to.
 
 Section 7's Limitations and the Discussion previously stated DRDM~\cite{meng2025drdmb} "did not
 fully read." Checked directly: DRDM has no public code (no GitHub repo linked from the paper, the
-Mount Sinai Scholars listing, or its PubMed record) and its full text is paywalled (ScienceDirect
-abstract-only; no PMC, arXiv, or author-manuscript copy exists). Its exact loss equations for
-"dynamically adjust[ing] association weights" and "dual-view contrastive learning" are therefore
-not available to this project.
+Mount Sinai Scholars listing, or its PubMed record). UPDATE (second external review,
+assessment_updated.txt, questioned the "abstract-only" characterization): re-checked the
+ScienceDirect page directly via a scraper rather than WebFetch, and it exposes more than previously
+found: the full abstract, full introduction with literature context, a "statement of significance"
+table, and a one-line "Materials and methods" stub. The exact loss equations are still paywalled
+(no PMC, arXiv, or author-manuscript copy exists), so that part of the original caveat holds. But
+the now-visible introduction reveals a more basic problem: DRDM reweights messages at each
+propagation step of a GNN over a heterogeneous drug-disease graph (Fdataset/Cdataset/LRSSL), and
+there is no graph or propagation step anywhere in this project. Full text access would not make a
+faithful reproduction possible here regardless, since the architecture itself has no counterpart
+in this pipeline. The reconstruction below approximates DRDM's *motivation* (down-weight popular
+entities, up-weight long-tail, add contrastive signal), not its actual GNN mechanism.
 
-`code/22_drdm_baseline.py` implements a reconstruction from the published abstract-level
-description, adapted to this project's compound x indication matrix (DRDM's own setting is a
+`code/22_drdm_baseline.py` implements a reconstruction from the published description,
+adapted to this project's compound x indication matrix (DRDM's own setting is a
 drug-disease heterogeneous graph, which does not exist here): a hand-rolled gradient-descent
 classifier (matching this project's existing numpy-only style, see `fit_shared_mf`) combining (1)
 a long-tail popularity reweighting term (static, by compound's total positive-indication degree)
@@ -1069,6 +1077,61 @@ These sit in the same order of magnitude as `plain`'s AUPRC for each target (pla
 without an explicit area correction: enrichment above the base rate on the same-area metric. No
 stronger claim than this should be drawn from a reconstruction whose exact fidelity to the
 published method cannot be checked.
+
+## 5h. Permutation test on Table 3 (second external review, Issue 6: sign-selection bias)
+
+`assessment_updated.txt`, a second external review of the already-revised paper, pointed out that
+`max(AUROC, 1-AUROC)` is upward-biased under the null when the sign is chosen on the same
+evaluation set the statistic is reported on: `|AUROC-0.5|` has positive expectation even when the
+true AUROC is exactly 0.5, worse for small or imbalanced flag-positive counts. This is exactly
+epilepsy's hard-negative (36 positives among 338 candidates) and proconvulsant (11 positives) cells
+in Table 3.
+
+`code/23_permutation_check.py` runs the correctly-sized test: shuffle the flag within the candidate
+set 5000 times, holding the real fitted penalty term fixed, recompute the same sign-free statistic
+each time, and report the fraction of permutations at or above the observed value. Pooled over 5
+seeds:
+
+| Target | Flag | Observed AUROC | Permutation p |
+|---|---|---|---|
+| depression | same-area | 0.563 | 0.38 |
+| depression | hard-neg | 0.540 | 0.56 |
+| antipsychotic | same-area | 0.605 | 0.31 |
+| antipsychotic | hard-neg | 0.580 | 0.42 |
+| epilepsy | same-area | 0.741 | **0.001** |
+| epilepsy | hard-neg | 0.568 | 0.34 |
+| epilepsy | proconv | 0.676 | 0.16 |
+
+Depression and antipsychotic: every cell is well within the null, consistent with (not undermined
+by) the "near chance" reading already in the paper. Epilepsy same-ATC-area clearly is not null and
+survives this test easily. Epilepsy hard-negative and proconvulsant do not clear p<0.05 and are
+individually significant in only 2 of 5 seeds each; the raw numbers in Table 3 (0.565, 0.676) are
+not safe to read as confirmed signal on their own. main.tex's Section 5.7 text was updated to say
+so explicitly: only the area flag is a confirmed exception for epilepsy on the standalone-AUROC
+reading. This does not undermine the intervention test's separate finding (Section 5.8) that
+epilepsy's proconvulsant rank percentile moves a small real amount under dosing, since that is a
+direct metric measurement, not a sign-selected AUROC, and is not subject to this bias.
+
+## 5i. Cold-start compounds and the shared MF embedding (second external review, Issue 5)
+
+The second review also asked how the shared MF embedding is obtained for compounds with zero
+training interactions under CVS2. Checked directly: `06_run_evaluation.make_masks`'s CVS2 branch
+masks a held-out compound's *entire row*, every column, not just the target's. Inside
+`fit_shared_mf`, that row's gradient (`G = (P-Y)*M`) is therefore exactly zero every epoch; the
+update reduces to `U[i] -= lr*l2*U[i]`, pure L2 decay of the random initialization, not learning.
+Measured directly: the correlation between a held-out row's final `Ufree` and its untrained random
+init is 1.0 (`np.corrcoef` on the flattened vectors). This is not a bug: a cold-start compound
+genuinely has no training interactions to learn an embedding from, so there is nothing else
+`fit_shared_mf` could do without an explicit side-information projection (which this paper doesn't
+build for the MF embedding itself, only for the area factor `A` via `project_area_factor_oos`).
+
+What it does mean: for CVS2 test rows, the MF half of `Zrep` carries no learned signal, just noise.
+Measured its practical impact: fitting `clf_plain` and applying its coefficients to test rows, the
+logit's standard deviation from the chemistry block is 2.9-4.8 across depression/antipsychotic/
+epilepsy, versus 0.1-0.3 from the (noise) MF block, roughly 5-10%. Since every method (plain,
+naive, proposed, NRBdMF) shares the same `Zrep`, this noise affects all four symmetrically rather
+than favoring one in the comparison, but it was not previously documented and main.tex now states
+it explicitly in the Method section.
 
 ## 6. Figures
 
@@ -1177,9 +1240,10 @@ A full run log (what was executed, in what order, what failed/was fixed along th
     match (`in_lincs=False`), and no fuzzy/InChIKey-based reconciliation was attempted for those 20;
     some may actually be present in the library under a different name spelling.
 11. **PARTIALLY RESOLVED (section 5g)**: DRDM now has a baseline reconstruction in
-    `code/22_drdm_baseline.py`, explicitly labeled as such rather than as a verified reproduction,
-    since no public code or accessible full methods text exists for it (paywalled, no PMC/arXiv
-    copy found). "Escaping the Drug-Bias Trap" was still not read in full during this pass; the
+    `code/22_drdm_baseline.py`, explicitly labeled as such rather than as a verified reproduction.
+    Its exact loss equations remain paywalled, but the more basic reason it can't be a faithful
+    reproduction is architectural: DRDM is a GNN over a heterogeneous drug-disease graph, and this
+    project has no graph. "Escaping the Drug-Bias Trap" was still not read in full during this pass; the
     novelty-scoping caveat from literature_review.md section 6 still stands for that one and
     should be addressed before the paper's related-work section is finalized.
 

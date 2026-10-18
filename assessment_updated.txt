@@ -1,0 +1,136 @@
+2. How well did the revision address my previous concerns?
+Previous concern	Updated status	Assessment
+Standalone AUROC does not prove metric insensitivity	Improved	New intervention experiment directly evaluates metric response
+No synthetic ground truth	Improved	Adds a known-confound simulation
+Missing out-of-sample factor estimation	Improved	Explicit projection added and prior error disclosed
+Theoretical orthogonality overclaimed	Partial	Regularization acknowledged; general implications remain weak
+Possible matrix-factorization leakage	Partial	Training-cell masking described, but cold-start details still needed
+Limited indication coverage	Improved	Two additional targets evaluated
+Lack of independent benchmark	Partial	repoDB overlap examined, not a full independent test
+Reproducibility and methodological detail	Partial	Several new experiments lack sufficient specification
+The most valuable correction is in Section 5.7. The manuscript discloses that the previous near-0.50 AUROC results were affected by a zero-valued out-of-sample factor. Correcting that calculation produces materially different results for epilepsy.
+That disclosure strengthens the scientific credibility of the revision, provided the new implementation has been independently validated.
+3. Remaining major problems
+Issue 1 — The abstract and formal method still overclaim metric blindness
+High priority
+This is the biggest conceptual problem still present.
+In Section 4.1, the paper states:
+Near-0.5 AUROC means P carries no information about F.
+
+It then concludes that the evaluation metric cannot reward or penalize that mechanism.
+This statement is still too strong. Near-chance AUROC shows weak marginal rank discrimination, not complete statistical independence or zero influence on a downstream ranking metric.
+The new Section 5.8 intervention experiment substantially helps. But a flat top-50 metric across five tested penalty strengths only establishes local insensitivity over those strengths, dataset splits, and metrics.
+It does not prove that the metric cannot detect the mechanism at all.
+Recommended correction: Reframe the alignment check as a screening diagnostic and the intervention experiment as its operational validation. Make it explicit that AUROC is neither a necessary nor sufficient condition for ranking-metric insensitivity.
+This is especially important because Section 5.7 already makes a more cautious statement, while the abstract, introduction, and Section 4.1 retain categorical language.
+Issue 2 — The synthetic experiment's most important conclusion needs another test
+High priority
+Section 5.8 reports a particularly interesting result.
+Synthetic ground-truth experiment
+Measure	Naive	Proposed
+Confound discrimination (AUROC)	0.68	0.83
+AUPRC	0.302	0.482
+Top-50 high-confound rate	0.480	0.676
+Source: revised manuscript, Section 5.8. Plain-model top-50 rate is 0.656.
+The paper interprets these results as evidence that the proposed method identifies the confound better but fails to remove it from the ranking.
+That interpretation is plausible, but reviewers may challenge the following distinction:
+- The estimated factor appears to predict the simulated confound effectively.
+- The actual correction term, derived through model coefficients and factor projection, may not preserve that predictive relationship.
+- The final ranking may also retain confounding through the chemistry representation, even after the explicit factor contribution is removed.
+To isolate these explanations, I would test three alternatives using the same synthetic data:
+1. Subtract a calibrated version of the estimated factor directly from the baseline score.
+2. Fit the model after removing the estimated confound contribution from its representation, rather than dropping coefficients only during scoring.
+3. Compare both approaches to an oracle correction using the known simulated confound.
+This could turn the paper's most intriguing empirical observation into a much stronger methodological result.
+Issue 3 — The out-of-sample factor implementation remains conceptually important
+Major
+Section 5.7 now explains that the factor is estimated for test compounds through a linear projection from the base representation, achieving cross-validated \(R^2\) of 0.44–0.56.
+This fixes a serious implementation problem in the previous version.
+However, it introduces another question: how much of the estimated factor is simply reconstructed from the original features?
+If the test factor is predicted as
+\[
+\widehat A_{\mathrm{test}}=X_{\mathrm{test}}B,
+\]
+
+then its values are necessarily functions of the base representation.
+This makes the exact training and scoring equations crucial. The manuscript should specify whether the held-out scores come from a jointly fitted model and how the estimated factor changes the final coefficient contributions.
+I would also report the alignment results using several valid out-of-sample factor estimators to determine whether the findings depend heavily on the selected linear projection.
+Issue 4 — The intervention experiment needs clearer reporting
+Major
+The new intervention experiment is valuable, but its presentation is too compressed for the importance of its conclusions.
+The manuscript reports the dose sweep for five targets, yet does not present a dedicated numerical table or figure.
+It also describes \(\alpha=1\) as the normal naive correction and \(\alpha=0\) as the normal proposed correction. This is not intuitive without writing the two scoring functions explicitly.
+I recommend adding a figure showing the bias-diagnostic metric against correction strength.
+For example:
+Illustrative intervention response
+Epilepsy proconvulsant rank percentile, using endpoint values reported in the manuscript. Interior points are not reconstructed.
+
+
+Naive subtractionProposed correction
+
+2035506580StartingEnding
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+The chart illustrates reported endpoint differences only; it does not represent the unreported intermediate dose responses.The actual submission should plot all five measured intervention strengths, preferably with across-seed uncertainty.
+Why this matters: This is now one of the principal experiments supporting the paper's methodological conclusion. Reviewers should not have to reconstruct it from prose.
+Issue 5 — A potential cold-start leakage problem still needs clarification
+High priority
+Section 4 now says that matrix-factorization gradients are masked to training cells, preventing held-out labels from entering the shared embedding.
+That is an improvement, but masking labels does not explain how a free matrix-factorization embedding is obtained for completely unseen drugs under CVS2.
+If a held-out drug has no training interactions, its free embedding cannot be reliably learned from the interaction matrix alone without some additional feature-to-embedding mapping or cold-start procedure.
+The methods must explain precisely how this is handled.
+Otherwise, a reviewer may question whether the cold-start evaluation is valid, even if label leakage has been prevented.
+Issue 6 — The statistical evidence is still insufficient
+Major
+The new synthetic experiment uses five seeds, but Section 5.8 largely reports means without uncertainty intervals.
+Likewise, Table 3 no longer reports the standard deviations that were present in the earlier manuscript.
+Five seeds are useful for an initial experiment, but I would recommend 20–30 synthetic replicates, paired differences, and confidence intervals for the most important claims.
+One smaller methodological concern: Table 3 uses max(AUROC, 1 − AUROC) to make the results sign-free. This can create an upward bias even for uninformative scores. If direction is genuinely arbitrary, establish it using training data rather than selecting the better orientation on the evaluation set.
+4. Writing and presentation concerns
+The narrative remains engaging, but a few issues should be fixed before submission.
+Location	Problem	Suggested fix
+Abstract	Says metrics cannot see a mechanism "at all"	Replace with a conditional, empirically supported statement
+Section 4.1	Treats near-0.5 AUROC as a definitive inability to detect effects	Distinguish association from intervention-based sensitivity
+Section 5.5	Claims shrinkage results argue against noisy estimation	Acknowledge that scaling alone may be absorbed by refitted coefficients
+Section 5.7	Says "Ruling out identifiability"	Use "Finding limited evidence of identifiability violations"
+Section 5.8	Reports many central results only in prose	Add intervention and simulation figures or tables
+Section 6	Generalizes the correction-application gap from the synthetic example	Define the conditions under which it is expected
+There is also an issue with the DRDM comparison. The manuscript states that no public full text exists and includes a reconstructed baseline. I verified that the published article has a substantial publicly accessible preview, although its full text may require subscription access. I would not characterize the reconstruction as a verified implementation, or use it as a central benchmark without enough implementation detail. 
+
+ScienceDirect
++1
+
+
+
+5. How I would position this paper for RECOMB
+Right now, the manuscript offers two related findings:
+- Evaluation alignment: Bias diagnostics can respond differently to corrections because their measured quantities differ.
+- Correction-application gap: A method can estimate a confounding factor relatively well without successfully removing its influence from the final prediction.
+I think the second finding could become the stronger central contribution, especially if you demonstrate why the fit-then-project-out strategy fails under identifiable conditions.
+The first can then serve as a diagnostic framework for discovering and characterizing that failure.
+This positioning would fit RECOMB's emphasis on substantial computational or methodological advances rather than simply applying existing methods to new datasets. 
+
+GitHub
+
+
+
+6. Final priorities before the deadline
+If I were allocating the remaining research time, I would rank the changes as follows.
+Priority	Action	Expected impact
+1	Validate and explain the cold-start embedding and factor-estimation pipelines	Essential for technical correctness
+2	Compare factor identification against effective removal using direct and oracle corrections	Strongest potential scientific contribution
+3	Replace categorical alignment claims with precise, conditional statements	Essential for defensible conclusions
+4	Add actual intervention-response figures and confidence intervals	Stronger experimental evidence
+5	Improve cross-domain interpretation and baseline documentation	Strengthens generalizability

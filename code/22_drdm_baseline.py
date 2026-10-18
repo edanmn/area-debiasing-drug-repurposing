@@ -2,19 +2,29 @@
 (Meng et al. 2025, cited as meng2025drdmb, "Adaptive Debiasing Learning for Drug Repositioning").
 
 Honesty note, read before using any number from this script: DRDM has no public code (checked:
-no GitHub repo linked from the paper, Mount Sinai Scholars page, or PubMed record) and its full
-text is paywalled (ScienceDirect abstract-only; no PMC, arXiv, or author-manuscript copy found).
-Its exact loss equations for "dynamically adjust[ing] association weights" and "dual-view
-contrastive learning" are therefore not available to this project. What follows is a reconstruction
-from the published abstract-level method description, NOT a verified faithful reproduction. This
-is stated explicitly here and must be stated explicitly in any paper text that cites this result,
-the same way NRBdMF (azuma2022nrbdmf) is labeled "matching the original specification" when it
-IS fully specified from a public, read paper -- the opposite label is required when it is not.
+no GitHub repo linked from the paper, Mount Sinai Scholars page, or PubMed record). Its
+ScienceDirect page (checked again after a second external review questioned the "abstract-only"
+claim) actually exposes a fair amount: full abstract, full introduction with literature context,
+a "statement of significance" table, and a one-line "Materials and methods" stub ("Fig. 2
+illustrates the overall framework of DRDM"). The exact loss equations for "dynamically adjust[ing]
+association weights" and "dual-view contrastive learning" are still paywalled (no PMC, arXiv, or
+author-manuscript copy found), so the first honesty issue (no equations) stands. But a second,
+more basic one is now clear from the visible introduction: DRDM dynamically reweights messages at
+each propagation step of a GNN over a heterogeneous drug-disease graph (popular entities get
+smaller aggregation weight, long-tail entities larger), evaluated on Fdataset/Cdataset/LRSSL.
+There is no graph or propagation step anywhere in this project; Zrep is a flat per-compound vector.
+Full access to DRDM's text would not make a faithful reproduction possible here, since the
+architecture itself has no counterpart in this pipeline, a separate and more fundamental gap than
+the paywall. What follows is therefore a reconstruction of the *motivation* (down-weight popular
+entities, up-weight long-tail ones, add a contrastive auxiliary signal), not of DRDM's actual
+mechanism, which is GNN-specific and does not transfer. This is stated explicitly here and must be
+stated explicitly in any paper text that cites this result, the same way NRBdMF (azuma2022nrbdmf)
+is labeled "matching the original specification" when it IS fully specified from a public, read
+paper -- the opposite label is required when it is not.
 
-Reconstruction, adapted to this project's compound x indication matrix (DRDM's own setting is a
-drug-disease heterogeneous graph; there is no graph here, only the same chemistry+MF shared
-representation Zrep every other method in this paper uses, kept as two separate "views" instead
-of one concatenated vector so a dual-view contrastive term has something to contrast):
+Reconstruction, adapted to this project's compound x indication matrix (using the same chemistry+MF
+shared representation Zrep every other method in this paper uses, kept as two separate "views"
+instead of one concatenated vector so a dual-view contrastive term has something to contrast):
 
   1. Dynamic reweighting: each compound's per-epoch training weight combines (a) a STATIC
      long-tail popularity term, 1/degree^p where degree is the compound's total positive-indication

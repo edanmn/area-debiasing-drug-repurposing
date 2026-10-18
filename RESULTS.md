@@ -1183,6 +1183,132 @@ truth) matters, and the joint-fit-then-project application mechanism's sensitivi
 imperfection also matters; neither alone is the whole story. main.tex's Section 5.7/5d text and
 Discussion now state this rather than attributing the gap to application alone.
 
+## 5l. Precise definition of the proposed correction's penalty term (a fourth round of review,
+pasted inline, Issue A: "the definition needs to be mathematically precise")
+
+This review pointed out, correctly, that three scores are in play and two differences between them
+are not interchangeable: $s_{\text{plain}}=\hat\beta_0^\top x$ (fit without the area factor $A$ at
+all), $s_{\text{joint}}=\hat\beta_X^\top x+\hat\gamma^\top a$ (refit with $A$ appended, nothing
+dropped), and $s_{\text{proposed}}=\hat\beta_X^\top x$ (the same refit, $A$'s coefficients dropped
+at scoring time, what Table 3 and the main results actually report as "proposed"). The alignment
+check and the permutation test both score $P=s_{\text{joint}}-s_{\text{proposed}}=\hat\gamma^\top a$,
+the contribution actually dropped at scoring time. $s_{\text{plain}}-s_{\text{proposed}}
+=(\hat\beta_0-\hat\beta_X)^\top x$ is a different quantity, since refitting jointly with $A$ also
+moves the base coefficients away from the separately-fit plain model's own. These need not agree,
+and the paper never claimed they did, but it also never said so explicitly, which is the gap this
+review is pointing at.
+
+Checked rather than just asserted, since the pipeline already fits both models side by side in
+`code/19_intervention_doseresponse.py`: added `corr_splain_vs_jointbase` (correlation of $s_{\text
+{plain}}$ against $\sigma(\hat\beta_X^\top x)$ on test rows) and `rel_coef_diff` (
+$\|\hat\beta_X-\hat\beta_0\|/\|\hat\beta_0\|$), per target, 5-seed mean:
+
+| Target | corr(s_plain, joint base-only score) | relative coef. shift |
+|---|---|---|
+| antipsychotic | 0.991 | 0.079 |
+| betablocker | 1.000 | 0.018 |
+| depression | 0.980 | 0.121 |
+| epilepsy | 0.959 | 0.116 |
+| lipid | 0.999 | 0.019 |
+
+In this data the two scores are close (correlations 0.96-1.00, coefficient shift 2-12%) but not
+identical, exactly as the algebra predicts: refitting with $A$ does move the base coefficients a
+real, if small, amount. Every quantitative claim in Sections 4.1, 5.3, 5.8/5.c, and 5h/5n is about
+$P=\hat\gamma^\top a$ specifically, the quantity the correction mechanism actually removes at
+scoring time, not about the aggregate plain-to-proposed difference. main.tex's Section 4.1 now
+states this explicitly with the three formulas and the measured gap, rather than leaving the reader
+to infer which quantity "the penalty term" means.
+
+## 5m. Confound-estimation-noise sweep (a fourth round of review, pasted inline, Issue B)
+
+5k's oracle/direct-subtract comparison measures the two application mechanisms at one noise level
+(the method's real 0.83-AUROC estimate, and the noise-free true confound for the oracle). This
+review asked whether fit-then-project-out is simply more sensitive to estimation error than direct
+subtraction, i.e. whether sweeping the noise level would show one mechanism degrading faster.
+
+`code/26_confound_noise_sweep.py` reuses 5d's simulation and adds Gaussian noise to the true
+confound $z$ at $\sigma\in\{0, 0.25, 0.5, 1, 1.5, 2, 3\}\times\mathrm{std}(z)$, applying both
+mechanisms (fit-then-project, direct-subtract) to the identical noisy estimate $\hat z_\sigma$ at
+each level, 5 seeds:
+
+| $\sigma$ | realized AUROC($\hat z_\sigma$, true-confound flag) | top-50 confound rate, fit-project | top-50 confound rate, direct-subtract |
+|---|---|---|---|
+| 0.00 | 1.000 | 0.256 | 0.192 |
+| 0.25 | 0.980 | 0.356 | 0.256 |
+| 0.50 | 0.938 | 0.484 | 0.300 |
+| 1.00 | 0.839 | 0.592 | 0.436 |
+| 1.50 | 0.768 | 0.624 | 0.564 |
+| 2.00 | 0.688 | 0.636 | 0.584 |
+| 3.00 | 0.647 | 0.648 | 0.628 |
+
+$\sigma=1.0$ lands at realized AUROC 0.839, almost exactly the real method's own 0.83 estimation
+quality, a useful check that the sweep brackets the real operating point rather than some unrelated
+range. Fit-then-project leaves more of the true confound in the top 50 than direct subtraction at
+every noise level tested, so the ordering in 5k is not an artifact of the one noise level checked
+there. The gap between them is not monotonic in $\sigma$, though: it is small at $\sigma=0$ (0.064),
+grows to its widest around $\sigma=0.5$-$1.0$ (0.184, 0.156), almost exactly where the real method's
+own estimation quality sits, then narrows back down toward $\sigma=3$ (0.020) as both mechanisms
+converge toward the same uncorrected-plain ceiling once the estimate carries little real signal. So
+"fit-then-project degrades faster than direct subtraction" is true in the weaker, more precise sense
+that it is worse at every noise level, not in the sense that its disadvantage grows without bound;
+the real method happens to sit close to where that disadvantage is largest, which is why 5k's
+single-noise-level comparison shows as large a gap as it does. main.tex's Section 5.7/5d text adds
+one sentence stating this; the full table is here rather than in the 10-page body.
+
+## 5n. Hierarchical (compound-level) permutation test, addressing seed non-independence (a fourth
+round of review, pasted inline, Issue C)
+
+5h's permutation test combines 5 per-seed p-values with Fisher's method, which assumes the 5 tests
+are independent. This review correctly points out that they are not fully independent: all 5 CVS2
+seeds re-split the SAME compound pool, so a given compound reappears as a candidate across seeds
+with the same true flag value and a correlated fitted penalty each time. It also notes that
+proconvulsant's leave-one-out p (0.0105) exceeds the Bonferroni threshold ($\alpha=0.0071$) used
+everywhere else, so 5h's earlier claim that it "holds up either way" alongside same-ATC-area was
+not consistent with that same threshold; 5h's text and main.tex's Table 3 discussion are both fixed
+to say proconvulsant clears the raw test but not the corrected one, rather than calling it confirmed.
+
+`code/25_hierarchical_permutation.py` builds a null distribution that models the real dependence
+directly instead of assuming it away: for each of 20{,}000 global permutations, draw ONE
+permutation of the full compound-index set and apply it to the entire flag vector once, then reuse
+that same shuffled vector across all 5 seeds' own candidate sets, so a compound that appears in
+several seeds' candidates gets the same reassigned flag value in all of them in a given draw,
+mirroring how its true flag is fixed (not independently re-rolled) across seeds in the real data.
+The combined statistic is the sum of the 5 seeds' sign-free AUROCs; the p-value is the fraction of
+permutations whose combined statistic meets or exceeds the observed one. Before trusting any of
+this, the script recomputes each seed's own observed AUROC with code copied verbatim from
+`23_permutation_check.py` and asserts it matches `results/permutation_check.csv` exactly (the
+"re-derived quantity drifts silently" failure mode noted in 5h/5b is just as possible here).
+
+One genuine bug this surfaced in its own first version: for the sparse proconvulsant flag (6-14
+positives per seed's ~330-candidate set), a small number of the 20,000 global permutations
+reassigned zero (or all) positives to a given seed's candidate subset by chance, making that seed's
+AUROC undefined (`UndefinedMetricWarning`) and silently producing `nan`, which numpy's `>=`
+comparison then treats as `False`, biasing the p-value without changing the reported denominator.
+Fixed by detecting the degenerate case explicitly, dropping those draws from both the numerator and
+denominator (3 of 20,000 for proconvulsant, 0 for every other cell), and switching the permutation
+seed from Python's randomized `hash()` to a deterministic `zlib.crc32` so reruns reproduce exactly.
+
+| Target | Flag | Fisher $p$ (5 seeds) | Fisher $p$ excl. extreme seed | Hierarchical $p$ (20k compound-level perms) | Bonferroni $\alpha=0.0071$ |
+|---|---|---|---|---|---|
+| depression | same-area | 0.120 | 0.383 | 0.0716 | fail (both) |
+| depression | hard-neg | 0.660 | 0.899 | 0.577 | fail (both) |
+| antipsychotic | same-area | 0.0055 | 0.447 | 0.0072 | fail (excl.); fail (hier., by 0.00006) |
+| antipsychotic | hard-neg | 0.0028 | 0.281 | 0.0091 | fail (excl.); fail (hier.) |
+| epilepsy | same-area | 2.2e-9 | <1e-9 | 0.00005 | **pass (all three)** |
+| epilepsy | hard-neg | 0.0243 | 0.198 | 0.0344 | fail (all three) |
+| epilepsy | proconvulsant | 0.00042 | 0.0105 | **0.00265** | fail (excl.); **pass (hier.)** |
+
+The hierarchical test agrees with Fisher's leave-one-out reading on every cell except
+proconvulsant, where the two checks genuinely disagree: the compound-level permutation, built to
+address exactly this review's non-independence concern, finds it Bonferroni-significant (0.00265);
+the leave-one-out check, which asks a different question (is the combined signal driven by one of
+the five seeds), does not (0.0105). Both checks are correctly computed; they just measure different
+things. Non-independence across seeds was not, in the end, what was making proconvulsant's
+significance fragile; concentration of its signal in one seed still is. The honest summary is not
+"confirmed" or "refuted" but both at once: real under the test built for this review's specific
+concern, fragile under a different, equally legitimate one. Same-ATC-area needs no such hedge,
+clearing every version of every test tried, including this one, by a wide margin.
+
 ## 5i. Cold-start compounds and the shared MF embedding (second external review, Issue 5)
 
 The second review also asked how the shared MF embedding is obtained for compounds with zero

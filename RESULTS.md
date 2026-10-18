@@ -1078,7 +1078,8 @@ without an explicit area correction: enrichment above the base rate on the same-
 stronger claim than this should be drawn from a reconstruction whose exact fidelity to the
 published method cannot be checked.
 
-## 5h. Permutation test on Table 3 (second external review, Issue 6: sign-selection bias)
+## 5h. Permutation test on Table 3 (second external review, Issue 6: sign-selection bias; later
+tightened against a third review, Issue 4: aggregation and multiple comparisons)
 
 `assessment_updated.txt`, a second external review of the already-revised paper, pointed out that
 `max(AUROC, 1-AUROC)` is upward-biased under the null when the sign is chosen on the same
@@ -1088,29 +1089,99 @@ epilepsy's hard-negative (36 positives among 338 candidates) and proconvulsant (
 in Table 3.
 
 `code/23_permutation_check.py` runs the correctly-sized test: shuffle the flag within the candidate
-set 5000 times, holding the real fitted penalty term fixed, recompute the same sign-free statistic
-each time, and report the fraction of permutations at or above the observed value. Pooled over 5
-seeds:
+set 5000 times (within each seed's own split), holding the real fitted penalty term fixed,
+recompute the same sign-free statistic each time, and report the fraction of permutations at or
+above the observed value.
 
-| Target | Flag | Observed AUROC | Permutation p |
-|---|---|---|---|
-| depression | same-area | 0.563 | 0.38 |
-| depression | hard-neg | 0.540 | 0.56 |
-| antipsychotic | same-area | 0.605 | 0.31 |
-| antipsychotic | hard-neg | 0.580 | 0.42 |
-| epilepsy | same-area | 0.741 | **0.001** |
-| epilepsy | hard-neg | 0.568 | 0.34 |
-| epilepsy | proconv | 0.676 | 0.16 |
+**Bug found and fixed while extending this script**: its "same-ATC-area" flag was built from this
+project's own 18-indication co-occurrence matrix (which diseases a compound is positive for in
+*our* data), not the external WHO ATC level-1 code that `run_eval.area_enrichment` and
+`code/13_naive_vs_proposed_alignment.py` (the script that actually produced Table 3's numbers) use.
+Two different flags, silently swapped in. Caught by comparing this script's per-seed AUROC against
+`13`'s own output for the same seed/target and finding they disagreed outside floating-point noise.
+Fixed to use the same ATC-based definition everywhere; results below are from the corrected version.
+Hard-negative and proconvulsant flags were never affected (both scripts always built those the same
+way), so only the "same-area" numbers in the first posted version of this section were wrong.
 
-Depression and antipsychotic: every cell is well within the null, consistent with (not undermined
-by) the "near chance" reading already in the paper. Epilepsy same-ATC-area clearly is not null and
-survives this test easily. Epilepsy hard-negative and proconvulsant do not clear p<0.05 and are
-individually significant in only 2 of 5 seeds each; the raw numbers in Table 3 (0.565, 0.676) are
-not safe to read as confirmed signal on their own. main.tex's Section 5.7 text was updated to say
-so explicitly: only the area flag is a confirmed exception for epilepsy on the standalone-AUROC
-reading. This does not undermine the intervention test's separate finding (Section 5.8) that
-epilepsy's proconvulsant rank percentile moves a small real amount under dosing, since that is a
-direct metric measurement, not a sign-selected AUROC, and is not subject to this bias.
+A third round of review (pasted inline, not saved as its own file; same four-item numbering restarted, "Issue 4" here) asked two further
+questions: whether permutation respects each CVS2 split's own structure, and whether testing 7
+cells (2 flags x depression, 2 x antipsychotic, 3 x epilepsy) raises a multiple-comparisons issue.
+On the first: permutation is always done within one seed's own candidate set and fitted penalty,
+never pooled across seeds. On aggregation: the first version of this analysis combined the 5
+per-seed p-values by taking their arithmetic mean, which has no justified null distribution as a
+combined test. Replaced with Fisher's method (`-2*sum(log(p_i)) ~ chi2(df=10)`), compared against a
+Bonferroni-corrected threshold for the 7 cells ($\alpha=0.05/7=0.0071$), and checked for robustness
+by recomputing with the single most extreme of the 5 seeds left out:
+
+| Target | Flag | Mean observed AUROC | Fisher-combined p (5 seeds) | Fisher p excl. most extreme seed |
+|---|---|---|---|---|
+| depression | same-area | 0.561 | 0.120 | 0.383 |
+| depression | hard-neg | 0.540 | 0.660 | 0.899 |
+| antipsychotic | same-area | 0.579 | 0.0055 | 0.447 |
+| antipsychotic | hard-neg | 0.580 | 0.0028 | 0.281 |
+| epilepsy | same-area | 0.657 | **2.2e-9** | **<1e-9** |
+| epilepsy | hard-neg | 0.568 | 0.0243 | 0.198 |
+| epilepsy | proconv | 0.676 | **0.00042** | **0.0105** |
+
+The combined test is more sensitive than the mean-of-p's reading it replaces: antipsychotic's two
+flags and epilepsy's hard-negative flag clear the Bonferroni threshold on the full 5-seed combination,
+which the earlier (less rigorous) approach missed. But all three collapse to clearly non-significant
+once the single most extreme seed is left out, so this is a seed-specific artifact of one random
+CVS2 split, not a stable effect, and is not read as a confirmed exception. Epilepsy's same-ATC-area
+and proconvulsant flags hold up either way: on this corrected, more rigorous reading, two of
+epilepsy's three flags, not one, are confirmed exceptions, strengthening rather than weakening the
+paper's own motivating case; depression's flags and the rest are not confirmed under any version of
+this test. main.tex's Table 3 discussion states this directly. This does not undermine the
+intervention test's separate finding (Section 5.8/5.c) that epilepsy's proconvulsant rank percentile
+moves a small real amount under dosing, since that is a direct metric measurement, not a
+sign-selected AUROC, and is not subject to this bias either way.
+
+## 5j. Chemistry-only CVS2 ablation (third round of review, pasted inline, Issue 1: random cold-start embeddings)
+
+That review's most serious outstanding concern: under CVS2, a held-out compound's free-MF
+embedding never receives a gradient (Section 5i) and stays at its random initialization, which
+carries no real information and could affect the two corrections asymmetrically since they apply to
+the shared representation through different operations (naive's raw-rate subtraction vs. proposed's
+jointly-fit-then-projected SVD factor). Recommended fix: rerun with chemistry only, no MF embedding
+at all, and check the main findings survive.
+
+`code/24_chemistry_only_ablation.py` does exactly this: `Zrep = Xchem` (32-dim ECFP4 PCA), nothing
+appended, same CVS2 splits, plain/naive/proposed, all five targets. Result: Table 1 and Table 2's
+bias-diagnostic numbers (AUPRC, top-50 area rate, hard-negative rank) reproduce the MF-included
+version to within 0.02 on every cell; naive still wins every bias metric, and proposed's top-50 area
+rate still does not improve on plain's (e.g. epilepsy 0.172 chemistry-only vs. 0.180 with MF, both
+above plain's 0.152/0.144). Table 3's standalone alignment AUROCs: epilepsy's three flags reproduce
+to within 0.001 (0.656/0.566/0.677 vs. 0.657/0.565/0.676 with MF); depression's and antipsychotic's
+shift up by 0.03-0.07 without chemistry's dilution of the cold-start noise (e.g. antipsychotic
+same-area 0.568 vs. 0.516 with MF) but stay well below naive's 0.60-0.79, so the qualitative
+"near chance, well below naive" reading is unchanged. None of the paper's claims depend on the
+random cold-start embedding; main.tex's Method section now states this with the exact numbers.
+
+## 5k. Oracle and direct-subtraction scores on the synthetic ground-truth experiment (third round
+of review, pasted inline, Issue 2: separating estimation failure from application failure)
+
+That round asked for two further scores on the synthetic experiment (5d) to separate "does
+the method fail to estimate the confound" from "does it fail to apply a correctly estimated one":
+an oracle (the same fit-jointly-then-project mechanism as "proposed", but given the TRUE $z_{area}$
+instead of its 0.83-AUROC estimate) and a direct-subtraction score (the method's own ALREADY
+ESTIMATED factor, applied by a calibrated direct subtraction instead of joint-fit-and-project).
+
+Added to `code/20_synthetic_groundtruth.py`, 5 seeds, mean values:
+
+| Quantity | Plain | Naive | Proposed | Direct-subtract | Oracle |
+|---|---|---|---|---|---|
+| AUPRC | 0.483 | 0.302 | 0.482 | 0.448 | 0.356 |
+| Top-50 true-confound rate (base rate 0.285) | 0.656 | 0.480 | 0.676 | 0.456 | 0.256 |
+
+Monotonic across all 5 individual seeds: oracle < direct-subtract < proposed on the top-50 rate,
+every seed. The oracle, given a clean confound, removes nearly all of it under the method's own
+projection mechanism (0.256, at the 0.285 base rate): the mechanism itself can work. Applying the
+SAME imperfect, already-estimated factor by crude subtraction instead removes most of it too
+(0.456, below naive's own 0.480), at a smaller AUPRC cost than naive pays. So both things found in
+5d are true simultaneously: the factor's imperfect estimation (0.83, not 1.0, AUROC against ground
+truth) matters, and the joint-fit-then-project application mechanism's sensitivity to that
+imperfection also matters; neither alone is the whole story. main.tex's Section 5.7/5d text and
+Discussion now state this rather than attributing the gap to application alone.
 
 ## 5i. Cold-start compounds and the shared MF embedding (second external review, Issue 5)
 

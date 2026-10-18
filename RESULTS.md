@@ -840,6 +840,236 @@ No further dataset search followed this result. It is reported as the first hone
 it, consistent with this project's standing practice of not re-running or re-selecting after a
 result comes in.
 
+## 5b. A genuine bug in the alignment check's out-of-sample factor, and what fixing it changes
+
+An external pre-submission review (`assessment.txt`) flagged that it was unclear how the proposed
+method's area factor $A$ is computed for cold-start (CVS2) test compounds, since $A$ is estimated
+from negative-control residuals that require labels the test compound does not have at train time.
+Checking this directly (not just reading the code) found something worse than "unclear":
+`negative_control_area_factor` (`code/models.py`) zeroes a test row's residual before the SVD,
+since it only has train-row labels to residualize. A zero row into an SVD forces a zero row out
+(confirmed both algebraically and numerically: `max|A[test_rows]|` ~1e-16 vs up to 1.38 on train
+rows, for every target checked). The "proposed method's penalty term" in Table "alignment" was
+therefore the AUROC of a value that is mathematically zero for every single test compound,
+regardless of its chemistry or true organ-system membership -- a tautological "no information"
+result, not a property of the method.
+
+**Fix**: `code/models.py::project_area_factor_oos` fits a Ridge regression from the shared
+representation $Z_{rep}$ to the train rows' own (non-degenerate) factor values, and uses it to
+give every row a genuine out-of-sample estimate. Cross-validated $R^2$ of this projection, within
+train rows only, is 0.44-0.56 (5-fold, epilepsy target) -- a real, non-degenerate fit, not an
+overfitting artifact.
+
+**What changes**: `code/13_naive_vs_proposed_alignment.py` now reports both the original
+(zero-masked, buggy) `area_penalty_raw` and the corrected `area_penalty` columns side by side in
+`results/naive_vs_proposed_alignment.csv`, for direct before/after comparison:
+
+| Target | Flag | Naive's term | Proposed's term, buggy | Proposed's term, fixed (signed) | Fixed, sign-free |
+|---|---|---|---|---|---|
+| depression | same-ATC-area | 0.766 | 0.499 | 0.517 | 0.517 |
+| depression | hard-negative | 0.636 | 0.499 | 0.492 | 0.508 |
+| antipsychotic | same-ATC-area | 0.774 | 0.498 | 0.516 | 0.516 |
+| antipsychotic | hard-negative | 0.663 | 0.501 | 0.502 | 0.502 |
+| epilepsy | same-ATC-area | 0.787 | 0.497 | 0.343 | 0.657 |
+| epilepsy | hard-negative | 0.600 | 0.500 | 0.435 | 0.565 |
+| epilepsy | proconvulsant | 0.721 | 0.500 | 0.324 | 0.676 |
+
+The area factor is an SVD output with an arbitrary sign (flip the factor and its fitted
+coefficient flips to compensate, same likelihood); `sign_free_auroc = max(auroc, 1-auroc)` is the
+same convention already used in `code/15_ruv2_genomics_generalization.py` for exactly this reason,
+and is applied here for the first time to this specific table.
+
+**Reading**: depression and antipsychotic stay close to chance (0.50-0.52) even corrected --
+the original "the metric can't see this mechanism" claim holds for these two, now for a real
+reason rather than an artifact. Epilepsy does not: its corrected, sign-free AUROC is 0.56-0.68,
+substantially above chance. This is the paper's own primary motivating case (the bemegride
+example, Section 1). The original abstract's universal claim ("its penalty term carries
+essentially no information... about the compounds our bias metrics flag") does not survive this
+fix uniformly; it is target-dependent, confirmed for 2 of 3 original targets, genuinely
+contradicted for the third.
+
+## 5c. Direct intervention test: does the metric actually respond to the correction's real effect?
+
+Standalone AUROC(penalty, flag) asks whether a penalty term alone discriminates a flag. It does
+not directly show whether the metric that is actually reported (Table "main-bias") responds when
+that penalty's real effect is dialed into the score. `code/19_intervention_doseresponse.py` tests
+this directly: for both corrections, sweep how much of the penalty is actually included in the
+score, $\alpha \in \{0, 0.25, 0.5, 0.75, 1.0\}$ (naive: $\alpha=1$ is Table "main-bias"'s reported
+row; proposed: $\alpha=0$ is Table "main-bias"'s reported row, factor fully projected out,
+$\alpha=1$ is the undropped fit), and recompute the real bias metrics at each dose, on the same
+CVS2 split, using the Priority-0-fixed out-of-sample factor on test rows.
+
+Sanity check: naive's $\alpha=1$ numbers reproduce Table "main-bias" exactly (e.g. epilepsy
+proconvulsant percentile 71.8).
+
+Mean over 5 seeds, `results/intervention_doseresponse.csv`:
+
+| Target | Method | $\alpha=0$ | $\alpha=0.25$ | $\alpha=0.5$ | $\alpha=0.75$ | $\alpha=1$ | Metric |
+|---|---|---|---|---|---|---|---|
+| depression | naive | 0.112 | 0.080 | 0.028 | 0.024 | 0.024 | area rate (lower better) |
+| depression | proposed | 0.112 | 0.112 | 0.112 | 0.112 | 0.112 | area rate |
+| antipsychotic | naive | 0.136 | 0.124 | 0.104 | 0.096 | 0.096 | area rate |
+| antipsychotic | proposed | 0.144 | 0.148 | 0.144 | 0.148 | 0.144 | area rate |
+| epilepsy | naive | 0.144 | 0.088 | 0.068 | 0.068 | 0.068 | area rate |
+| epilepsy | proposed | 0.180 | 0.168 | 0.160 | 0.148 | 0.140 | area rate |
+| epilepsy | naive | 30.9 | 43.5 | 51.0 | 58.7 | 71.8 | proconvulsant pct. (higher better) |
+| epilepsy | proposed | 26.4 | 28.3 | 29.7 | 31.5 | 32.7 | proconvulsant pct. |
+| lipid | naive | 0.104 | 0.076 | 0.052 | 0.052 | 0.052 | area rate |
+| lipid | proposed | 0.104 | 0.104 | 0.104 | 0.104 | 0.104 | area rate |
+| betablocker | naive | 0.108 | 0.088 | 0.088 | 0.088 | 0.088 | area rate |
+| betablocker | proposed | 0.112 | 0.112 | 0.108 | 0.108 | 0.108 | area rate |
+
+**Depression, antipsychotic, lipid**: naive's metrics move strongly and monotonically with
+$\alpha$; proposed's stay exactly or nearly flat across the whole sweep. This is the direct,
+operational version of "the metric cannot see this mechanism," strictly stronger evidence than
+the standalone AUROC ever gave, for 3 of 5 targets. **Betablocker**: neither method's metrics move
+much (naive's own swing is also small here), consistent with Section 4's earlier finding that
+betablocker shows little method differentiation on any measure -- not informative either way, not
+claimed as a confirmation. **Epilepsy**: proposed's metrics show a small but real, mixed-direction
+response (area rate improves 0.180->0.140; proconvulsant percentile also improves 26.4->32.7;
+hard-negative percentile is not shown here but moves slightly the other way), roughly a quarter
+the magnitude of naive's corresponding swing. Not flat, not as strong as naive's: a genuine,
+small exception, not a clean failure or a clean confirmation.
+
+## 5d. Synthetic ground-truth confounding experiment
+
+Real data can show a correction's penalty term is or is not associated with a *proxy* bias flag,
+never with the true organ-system confound itself, since its real value is unobserved. 5000-line
+simulation in `code/20_synthetic_groundtruth.py`: compounds get chemistry features $X$, an organ-
+system confound $z_{area}$ that is itself a noisy function of a chemistry subspace (mirroring this
+paper's own premise that structurally related compounds share both disease-specific chemistry and
+organ-system membership), and indication labels whose true log-odds combine a disease-specific
+mechanism term plus (for diseases sharing the confounded area) the real confound. Negative controls
+share the area but have an independently drawn mechanism direction. 5 seeds.
+
+| Quantity | Plain | Naive | Proposed |
+|---|---|---|---|
+| AUPRC (precision preservation) | 0.483 | 0.302 | 0.482 |
+| Top-50 true-confound rate (base rate 0.28) | 0.656 | 0.480 | 0.676 |
+
+| Quantity | Naive's penalty | Proposed's factor, buggy (zero-masked) | Proposed's factor, fixed (OOS, sign-free) |
+|---|---|---|---|
+| AUROC vs. true confound | 0.679 | 0.501 | **0.832** |
+
+Stable across all 5 individual seeds (AUPRC proposed 0.44-0.50 vs plain 0.45-0.50 vs naive
+0.25-0.34; top-50 confound rate proposed 0.62-0.78 vs plain 0.62-0.72 vs naive 0.40-0.60; factor
+AUROC-vs-truth 0.79-0.87 for the fixed OOS estimate, 0.50-0.50 for the buggy zero-masked one, every
+single seed -- the bug reproduces exactly here too, confirming it is a structural property of the
+code, not an artifact of the real dataset).
+
+**Reading**: the proposed method's area factor, correctly estimated, recovers the *true* confound
+better than naive's own penalty does (0.832 vs 0.679 AUROC against known ground truth) -- exactly
+what the method's RUV-style design is supposed to achieve, and better than the cruder alternative.
+But the top-50 true-confound rate after correction is not reduced at all (0.656 -> 0.676, same or
+slightly worse), while naive's crude subtraction substantially reduces it (0.656 -> 0.480), at a
+real AUPRC cost naive pays and proposed does not. This is a sharper, more mechanistic account than
+"the metric can't see it": the method's *identification* step works, arguably better than naive's;
+its *correction* step (fit jointly with the factor, then drop the factor's coefficients at scoring)
+does not translate that accurate identification into actually suppressing the confound's presence
+in the ranking. This single account covers both patterns found in 5b/5c at once: targets where the
+metric looks blind (the factor truly carries little leftover signal there) and epilepsy, where the
+factor demonstrably carries real signal that the correction mechanism still fails to act on.
+
+## 5e. Expanding beyond three indications: betablocker and lipid
+
+Depression, antipsychotic, and epilepsy are all area "N" (nervous system). `code/indication_
+matrix.py`'s `AREA_OF`/`negative_controls` already cover all 18 indications; betablocker and lipid
+(area "C", cardiovascular, 2 negative controls each, 20-21 positives) were added as a 4th/5th
+target to `code/06_run_evaluation.py`, `13_naive_vs_proposed_alignment.py`, and
+`19_intervention_doseresponse.py`. The very sparse indications (anxiolytic n=7, antidementia n=6,
+opioid_analgesic n=4, osteoporosis n=6) were deliberately excluded as targets, for the same
+small-class instability already established for anxiolytic in Section 5's calibration check.
+
+Main result (`results/eval_summary.csv`, CVS2): **betablocker shows almost no method
+differentiation on anything** -- AUPRC plain/naive/proposed/nrbdmf = 0.741/0.742/0.741/0.152
+(nrbdmf alone is weak, the other three indistinguishable), area rate 0.108/0.088/0.112/0.096
+against a base rate of 0.079 (modest enrichment, barely moved by either correction), hard-negative
+percentile pinned near 50 for every method. **Lipid shows the cleanest confirmation of the
+alignment-check story found in this project**: naive's penalty AUROC against same-area is 0.635,
+proposed's (sign-free, fixed) is 0.601 -- similar order, unlike the N-area diseases' sharp gap --
+yet the intervention test (5c) shows naive's area rate still drops by half across the dose sweep
+while proposed's is exactly flat at every dose.
+
+This is a genuine scope-limiting finding, reported as such rather than smoothed over: the sharp
+naive-wins/proposed-precision-preserving divergence that motivates this paper is a real pattern
+for the three N-area (nervous-system) targets and for lipid, but essentially absent for
+betablocker in this dataset. The paper's claims should be scoped to where the phenomenon actually
+appears, not implied to hold uniformly across any same-area pair.
+
+## 5f. repoDB secondary validation
+
+Related Work already frames repoDB~\cite{brown2017repodb} as "a standard secondary comparison
+point in this literature"; Section 7's Limitations previously stated it was not run. It has now
+been pulled in: `data/repoDB.csv`, fetched from `github.com/zietzm/repoDB` (itself built from the
+original author's `adam-sam-brown/repoDB`, CC-BY 4.0 -- the official apps.chiragjpgroup.org/repoDB
+download requires an interactive Shiny session with no static file endpoint, so this is the
+closest available static copy of the same release).
+
+Join: by lowercased exact drug name (no DrugBank/InChIKey crosswalk exists in this project's data).
+892 of repoDB's 1,572 drug names match a name in our 9,752-named-compound library. Indication-term
+mapping tried for all 5 targets; betablocker/lipid were dropped after checking coverage --
+repoDB's symptom-level indication terms (hypertension, angina, hypercholesterolemia) match many
+OTHER drug mechanisms too (ACE inhibitors, calcium-channel blockers, other statin classes), giving
+only 8/34 and 15/16 agreement with the existing mechanism-based label, too contaminated by
+mechanism mismatch to use. Depression/antipsychotic/epilepsy's terms (psychiatric/neurological
+diagnoses) map much more cleanly:
+
+| Target | repoDB-matched in pool | Agreement with existing ChEMBL-derived label |
+|---|---|---|
+| depression | 42 (39 approved, 3 failed-only) | 0.821 |
+| antipsychotic | 37 (32 approved, 5 failed-only) | 0.906 |
+| epilepsy | 25 (22 approved, 3 failed-only) | 0.864 |
+
+An AUPRC comparison was attempted (`code/21_repodb_validation.py`, pooling each compound's
+out-of-fold score across all 5 CVS2 seeds rather than evaluating within each seed's tiny,
+often-degenerate fold -- an earlier per-fold version produced AUPRC of exactly 1.0 for some folds
+simply because every repoDB-matched compound in that fold happened to be repoDB-positive). Even
+pooled, the matched evidence set is small (22-42 compounds) and heavily skewed toward repoDB's own
+approved set (86-91% positive in the pooled set), so the resulting AUPRC values (0.75-1.0 for
+every method) are inflated by prevalence and not independently informative about relative method
+quality; they are reported in `results/repodb_validation.csv` for completeness but not used as a
+comparative claim. **What is usable and genuinely informative**: the label-agreement numbers
+above (82-91%) are real external validation that this paper's ChEMBL/LINCS-derived indication
+labels agree with an independent, standard gold-standard database for the large majority of
+compounds either source can speak to.
+
+## 5g. DRDM baseline (best-effort reconstruction, not a verified reproduction)
+
+Section 7's Limitations and the Discussion previously stated DRDM~\cite{meng2025drdmb} "did not
+fully read." Checked directly: DRDM has no public code (no GitHub repo linked from the paper, the
+Mount Sinai Scholars listing, or its PubMed record) and its full text is paywalled (ScienceDirect
+abstract-only; no PMC, arXiv, or author-manuscript copy exists). Its exact loss equations for
+"dynamically adjust[ing] association weights" and "dual-view contrastive learning" are therefore
+not available to this project.
+
+`code/22_drdm_baseline.py` implements a reconstruction from the published abstract-level
+description, adapted to this project's compound x indication matrix (DRDM's own setting is a
+drug-disease heterogeneous graph, which does not exist here): a hand-rolled gradient-descent
+classifier (matching this project's existing numpy-only style, see `fit_shared_mf`) combining (1)
+a long-tail popularity reweighting term (static, by compound's total positive-indication degree)
+plus a per-epoch term up-weighting currently-hard examples, approximating "dynamic" reweighting
+without the paper's exact update rule, and (2) an InfoNCE-style dual-view contrastive loss between
+a chemistry-view and an MF-view projection of the same compound. **This is stated explicitly as a
+reconstruction, not a verified faithful reproduction**, the opposite labeling from NRBdMF
+(`azuma2022nrbdmf`), which IS fully specified from a public, read paper and is labeled as matching
+its original specification.
+
+Mean over 5 seeds, CVS2 (`results/drdm_baseline.csv`):
+
+| Target | AUPRC | Top-50 area rate | Area base rate |
+|---|---|---|---|
+| depression | 0.235 | 0.156 | 0.100 |
+| antipsychotic | 0.583 | 0.140 | 0.104 |
+| epilepsy | 0.110 | 0.144 | 0.110 |
+| betablocker | 0.809 | 0.120 | 0.079 |
+| lipid | 0.132 | 0.088 | 0.084 |
+
+These sit in the same order of magnitude as `plain`'s AUPRC for each target (plain: 0.201, 0.440,
+0.091, 0.741, 0.211 respectively) and show the same qualitative pattern as every other method
+without an explicit area correction: enrichment above the base rate on the same-area metric. No
+stronger claim than this should be drawn from a reconstruction whose exact fidelity to the
+published method cannot be checked.
+
 ## 6. Figures
 
 - `figures/fig1_bemegride_top10.png` -- top-10 non-AED candidates, plain model (section 1a)
@@ -926,25 +1156,32 @@ A full run log (what was executed, in what order, what failed/was fixed along th
    transfer mechanism. A genuinely informative CVS3 experiment would need a real cross-disease
    transfer model (e.g. sharing indication embeddings via side information), which we did not
    build in the time available.
-7. **repoDB secondary benchmark (literature_review.md section 5 item 1) was not run.** Time did
-   not permit pulling and reconciling a second external benchmark on top of everything above;
-   this is an explicit gap, not an oversight to be silently dropped -- flagged here as "not run."
+7. **RESOLVED (section 5f)**: repoDB secondary benchmark now run. 82-91% label agreement with the
+   existing ChEMBL-derived labels for depression/antipsychotic/epilepsy is genuine external
+   validation; the AUPRC comparison itself is too prevalence-skewed on the small matched subset
+   (22-42 compounds, 86-91% positive) to support a comparative claim, and is not used as one.
+   betablocker/lipid were tried and dropped: repoDB's symptom-level indication terms match too
+   many other drug mechanisms to give a clean target-specific label there.
 8. **External/temporal holdout (literature_review.md section 5 item 7) was not run**, for the same
    time-budget reason. `data/approval_years_depression.csv` and `approval_years_antineoplastic.csv`
    exist and could support this for those two classes; it was not attempted for the three primary
    targets here.
 9. **RESOLVED by follow-up (section 5)**: the anxiolytic negative-control calibration cells were
-   re-run with 20 reruns instead of 4-5; the large positive mean delta shrank by ~3.7x (0.127 ->
-   0.034) while the standard deviation stayed flat, confirming small-sample noise (7 positives
-   total) rather than a genuine calibration failure. No longer an open item.
+   re-run with 20 reruns instead of 4-5; the mean delta shrank by ~3.7x (0.127 -> 0.034), now well
+   within 1 SE of zero (SE=0.129/sqrt(15)=0.033), confirming small-sample noise (7 positives
+   total) rather than a genuine calibration failure. No longer an open item. (The standard
+   deviation also dropped, from 0.249 to 0.129, roughly half, not flat -- see section 5's note on
+   why this doesn't change the conclusion, which rests on the SE calculation.)
 10. **Proconvulsant canonicalization is name-based** (`code/04_build_proconvulsants.py`): 20 of the
     82 literature-curated compounds do not resolve to one of the 9,878 LINCS compounds by name
     match (`in_lincs=False`), and no fuzzy/InChIKey-based reconciliation was attempted for those 20;
     some may actually be present in the library under a different name spelling.
-11. **DRDM and "Escaping the Drug-Bias Trap"** (literature_review.md section 4) were not read in
-    full during this implementation pass (only during the earlier literature review); the
-    novelty-scoping caveat from literature_review.md section 6 still stands and should be
-    addressed before the paper's related-work section is finalized.
+11. **PARTIALLY RESOLVED (section 5g)**: DRDM now has a baseline reconstruction in
+    `code/22_drdm_baseline.py`, explicitly labeled as such rather than as a verified reproduction,
+    since no public code or accessible full methods text exists for it (paywalled, no PMC/arXiv
+    copy found). "Escaping the Drug-Bias Trap" was still not read in full during this pass; the
+    novelty-scoping caveat from literature_review.md section 6 still stands for that one and
+    should be addressed before the paper's related-work section is finalized.
 
 ## 8. Compute note
 

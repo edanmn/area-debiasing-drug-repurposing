@@ -13,21 +13,29 @@ negative_control_area_factor, fit_with_extra), we compute two quantities per non
 compound:
 
   raw_rate       = raw_area_rate(Y, nc_idx)                         -- naive subtraction's penalty
-  area_penalty   = A @ clf_db.coef_[0][n_base:]                     -- proposed method's penalty,
+  area_penalty   = A_oos @ clf_db.coef_[0][n_base:]                 -- proposed method's penalty,
                    i.e. the contribution the dropped area-factor coefficients WOULD have made to
                    the score, had they not been projected out at scoring time
 
-and measure how well each one separates compounds the bias metrics actually flag: same-ATC-area
-membership (the area_enrichment criterion) and SIDER-hard-negative / proconvulsant membership
-(the hard_neg_rank_pct criterion), via AUROC of each penalty term as a standalone classifier of
-that flag.
+Correction (logged honestly, not silently): an earlier version of this script used the raw `A`
+returned by negative_control_area_factor directly on test rows. That function zeroes a test row's
+residual before the SVD (it only has train-row labels to compute a residual from), which forces
+that row's own factor value to be exactly zero by construction -- a zero row into an SVD forces a
+zero row out, confirmed numerically (max|A[test_rows]| ~1e-16 vs up to 1.38 on train rows). The
+"proposed method's penalty term" was therefore being measured as the AUROC of a value that is
+mathematically zero for every single test compound, regardless of its chemistry or true
+organ-system membership: a tautological "no information" result, not evidence about the method.
+`models.project_area_factor_oos` fixes this: it fits a linear map from the shared representation Z
+to the train rows' own (non-degenerate) factor values and uses it to give every row an actual
+out-of-sample estimate. `area_penalty` below uses this corrected, out-of-sample `A_oos`.
 
-If raw_rate separates the flagged compounds far better than area_penalty does, that is a direct,
-quantitative account of why naive subtraction moves the bias metrics and the proposed method does
-not: the two methods are penalizing different things, and only one of them is aligned with what the
-metric measures.
+We measure how well each penalty term separates compounds the bias metrics actually flag:
+same-ATC-area membership (the area_enrichment criterion) and SIDER-hard-negative / proconvulsant
+membership (the hard_neg_rank_pct criterion), via AUROC of each penalty term as a standalone
+classifier of that flag.
 
-Writes: results/naive_vs_proposed_alignment.csv
+Writes: results/naive_vs_proposed_alignment.csv (plus the original, zero-masked `area_penalty_raw`
+columns, kept alongside the corrected ones for direct before/after comparison)
 """
 import sys
 import numpy as np
@@ -39,11 +47,11 @@ from common import D
 from indication_matrix import build_matrix, negative_controls, AREA_OF, ALL_DISEASES
 from hard_negatives import HARD_NEG_TERMS
 from models import (fit_shared_mf, chem_pca, fit_per_indication_logreg, negative_control_area_factor,
-                     fit_with_extra, raw_area_rate)
+                     fit_with_extra, raw_area_rate, project_area_factor_oos)
 import importlib
 run_eval = importlib.import_module("06_run_evaluation")
 
-TARGETS = ["depression", "antipsychotic", "epilepsy"]
+TARGETS = ["depression", "antipsychotic", "epilepsy", "betablocker", "lipid"]
 SEEDS = [0, 1, 2, 3, 4]
 R_FREE = 16
 R_CHEM = 32
@@ -92,7 +100,10 @@ def main():
             clf_db, n_base = fit_with_extra(Zrep, A, y_full, train_idx_k0)
             if clf_db is None:
                 continue
-            area_penalty = A @ clf_db.coef_[0][n_base:]
+            coef_A = clf_db.coef_[0][n_base:]
+            area_penalty_raw = A @ coef_A  # pre-fix: exactly ~0 on every test row, see module docstring
+            A_oos = project_area_factor_oos(A, Zrep, train_idx_k0)
+            area_penalty = A_oos @ coef_A  # fixed: genuine out-of-sample estimate on test rows
             raw_rate = raw_area_rate(Y, nc_idx)
 
             cand = test_rows[y_full[test_rows] == 0]  # non-indicated candidates, matches area_enrichment
@@ -103,12 +114,15 @@ def main():
                 target=target, seed=seed, n_cand=len(cand),
                 auroc_rawrate_samearea=safe_auroc(same_area_flag[cand], raw_rate[cand]),
                 auroc_areapenalty_samearea=safe_auroc(same_area_flag[cand], area_penalty[cand]),
+                auroc_areapenalty_raw_samearea=safe_auroc(same_area_flag[cand], area_penalty_raw[cand]),
                 auroc_rawrate_hardneg=safe_auroc(hard_col[cand], raw_rate[cand]),
                 auroc_areapenalty_hardneg=safe_auroc(hard_col[cand], area_penalty[cand]),
+                auroc_areapenalty_raw_hardneg=safe_auroc(hard_col[cand], area_penalty_raw[cand]),
             ))
             if target == "epilepsy":
                 rows[-1]["auroc_rawrate_proconv"] = safe_auroc(proconv_mask_all[cand], raw_rate[cand])
                 rows[-1]["auroc_areapenalty_proconv"] = safe_auroc(proconv_mask_all[cand], area_penalty[cand])
+                rows[-1]["auroc_areapenalty_raw_proconv"] = safe_auroc(proconv_mask_all[cand], area_penalty_raw[cand])
 
     out = pd.DataFrame(rows)
     out.to_csv("../results/naive_vs_proposed_alignment.csv", index=False)

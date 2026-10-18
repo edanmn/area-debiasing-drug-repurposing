@@ -21,7 +21,7 @@ from models import (fit_shared_mf, chem_pca, fit_per_indication_logreg, negative
                      fit_with_extra, score_project, raw_area_rate, nrbdmf_signed_matrix)
 from sklearn.metrics import average_precision_score
 
-TARGETS = ["depression", "antipsychotic", "epilepsy"]
+TARGETS = ["depression", "antipsychotic", "epilepsy", "betablocker", "lipid"]
 SEEDS = [0, 1, 2, 3, 4]
 R_FREE = 16
 R_CHEM = 32

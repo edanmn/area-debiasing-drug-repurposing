@@ -34,7 +34,7 @@ Pipeline:
      Y and the hard-negative hit matrix, independent of Z/chemistry, within-drug only.
 """
 import numpy as np
-from sklearn.linear_model import LogisticRegression
+from sklearn.linear_model import LogisticRegression, Ridge
 from sklearn.decomposition import TruncatedSVD
 from sklearn.exceptions import ConvergenceWarning
 import warnings
@@ -105,6 +105,20 @@ def negative_control_area_factor(Y, P_hat, nc_idx, train_mask, r_area=2):
     Uu, S, Vt = np.linalg.svd(R, full_matrices=False)
     r_area = min(r_area, Uu.shape[1])
     return Uu[:, :r_area] * S[:r_area][None, :]
+
+
+def project_area_factor_oos(A, Zrep, train_idx):
+    """Out-of-sample estimate of the area factor for rows outside train_idx.
+
+    negative_control_area_factor zeroes a row's residual before the SVD for any row not in the
+    columns' own train mask, which forces that row's factor to be exactly zero (a zero row of the
+    SVD's input forces a zero row of its output) -- not an estimate of anything, just an artifact
+    of never having computed one. This fits a linear map from the shared representation to the
+    train rows' own (non-degenerate) factor values, Ridge(Zrep[train_idx]) -> A[train_idx], and
+    uses it to give every row, train or test, an actual out-of-sample estimate instead of a
+    structural zero."""
+    ridge = Ridge(alpha=1.0).fit(Zrep[train_idx], A[train_idx])
+    return ridge.predict(Zrep)
 
 
 def fit_with_extra(Zrep, extra, y, train_idx, C=1.0):

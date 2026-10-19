@@ -1,4 +1,4 @@
-# Results: An Alignment Check for Debiasing Corrections (Idea 2, RECOMB 2027)
+# Results: Identifying a Confound Is Not Enough (Idea 2, RECOMB 2027)
 
 All numbers below trace to a results/*.csv file produced by the code in code/, run on real data
 (ChEMBL, SIDER, LINCS/9,878-compound library already on disk, PubChem). Where something could not

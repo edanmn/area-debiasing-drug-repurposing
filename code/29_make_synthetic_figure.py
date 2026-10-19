@@ -11,6 +11,10 @@ here (confirmed via PyMuPDF's own rasterizer before this fix), consistent with a
 PDF compatibility issue in some viewers rather than a content problem. Figure 2 was the only
 vector-embedded figure in the paper; switching it to PNG removes that whole failure class.
 
+A seventh round of review (pasted inline) found the subplot labels small once included at
+0.92\textwidth and shrunk to the page: font sizes below bumped up (ticks/labels/title 9-13pt,
+legend/annotation 10-11pt, up from 7-8pt) so on-page text stays readable after that ~2x shrink.
+
 Writes: figures/fig2_synthetic_correction_gap.png
 """
 import numpy as np
@@ -22,6 +26,7 @@ from scipy import stats
 
 RES = "../results/"
 FIG = "../figures/"
+plt.rcParams.update({"font.size": 11})
 
 
 def ci95(x):
@@ -37,7 +42,7 @@ def main():
     synth = pd.read_csv(RES + "synthetic_groundtruth.csv")
     sweep = pd.read_csv(RES + "confound_noise_sweep.csv")
 
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(9.5, 1.85))
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(9.5, 2.15))
 
     # Panel A: correction comparison at the real (unswept) estimation quality, 30 seeds.
     methods = ["top50_confound_plain", "top50_confound_naive", "top50_confound_proposed",
@@ -52,10 +57,11 @@ def main():
     x = np.arange(len(methods))
     ax1.bar(x, means, yerr=halfs, capsize=3, color=colors)
     ax1.axhline(base_rate, color="black", ls="--", lw=1, label=f"base rate ({base_rate:.2f})")
-    ax1.set_xticks(x); ax1.set_xticklabels(labels, fontsize=8)
-    ax1.set_ylabel("top-50 true-confound rate")
-    ax1.set_title("(a) correction comparison, 30 seeds\n(95% CI)")
-    ax1.legend(fontsize=7, loc="upper left")
+    ax1.set_xticks(x); ax1.set_xticklabels(labels, fontsize=10)
+    ax1.tick_params(axis="y", labelsize=10)
+    ax1.set_ylabel("top-50 true-confound rate", fontsize=11)
+    ax1.set_title("(a) correction comparison, 30 seeds\n(95% CI)", fontsize=12)
+    ax1.legend(fontsize=10, loc="upper left")
 
     # Panel B: complete 7-level noise sweep, both application mechanisms, 30 seeds each.
     sigmas = sorted(sweep.sigma.unique())
@@ -69,11 +75,12 @@ def main():
     ax2.errorbar(sigmas, ds_mean, yerr=ds_half, marker="s", color="#1f77b4", capsize=3,
                  label="direct subtract")
     ax2.axvline(1.0, color="gray", ls=":", lw=1)
-    ax2.text(1.05, ax2.get_ylim()[0] + 0.02, "method's own\nAUROC region", fontsize=7, color="gray")
-    ax2.set_xlabel(r"noise scale $\sigma$ (x std of true confound)")
-    ax2.set_ylabel("top-50 true-confound rate")
-    ax2.set_title("(b) noise sweep, both mechanisms\n(95% CI, 30 seeds/level)")
-    ax2.legend(fontsize=7, loc="lower right")
+    ax2.text(1.05, ax2.get_ylim()[0] + 0.02, "method's own\nAUROC region", fontsize=10, color="gray")
+    ax2.set_xlabel(r"noise scale $\sigma$ (x std of true confound)", fontsize=11)
+    ax2.set_ylabel("top-50 true-confound rate", fontsize=11)
+    ax2.tick_params(axis="both", labelsize=10)
+    ax2.set_title("(b) noise sweep, both mechanisms\n(95% CI, 30 seeds/level)", fontsize=12)
+    ax2.legend(fontsize=10, loc="lower right")
 
     fig.tight_layout()
     fig.savefig(FIG + "fig2_synthetic_correction_gap.png", dpi=150)

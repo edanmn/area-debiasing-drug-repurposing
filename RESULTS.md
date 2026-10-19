@@ -1671,6 +1671,51 @@ of these errors change any qualitative claim in the paper (every "wrong directio
 points," or similar comparison in the surrounding prose still holds with the corrected numbers);
 all five are fixed in main.tex now.
 
+## 5y. Precise insensitivity wording, larger Figure 2 labels, and a full statistical-test
+reproducibility rerun (a seventh round of review, pasted inline)
+
+Four points from this round, the first two wording-only:
+
+**"Genuinely unmoved" overstates what the intervention test shows.** The abstract and Discussion
+said the bias metrics are "genuinely unmoved" / the metric "genuinely cannot see" the proposed
+method's mechanism for depression, antipsychotic, and lipid. That is supported over the five
+correction strengths actually swept ($\alpha\in\{0,0.25,0.5,0.75,1\}$, `code/19_intervention_
+doseresponse.py`), not as a claim about every possible dose. Reworded in both places, and in the
+intro's equivalent sentence, to "shows no measurable response ... over the correction strengths
+tested" / "over the doses tested," following this review's suggested phrasing.
+
+**Figure 2's labels were too small once embedded and shrunk to page width.** The figure is 9.5in
+wide but displayed at 0.92\textwidth (roughly a 2x shrink in print), and the original font sizes
+(7-8pt ticks/legend, default ~10-12pt titles/labels) were chosen when the figure was still a wider,
+shorter vector PDF, not rechecked after the PNG switch. `code/29_make_synthetic_figure.py`'s fonts
+are bumped to 10-12pt throughout (ticks, axis labels, titles, legend, annotation), and the figure
+height increased slightly (1.85in to 2.15in) so the larger text has room without crowding the
+y-axis label into the title. Paper stayed at exactly 10 body pages after this change, offset by
+trims to the Discussion/Limitations paragraph (the same region trimmed in the sixth round, since
+that is where this project's page-budget slack reliably lives at this point).
+
+**A full reproducibility rerun of the statistical tests, not just the tables.** The sixth round's
+audit reran the scripts behind Tables 1-3, the intervention experiment, and Figure 2 (06, 14, 19,
+20, 26) and confirmed byte-identical output. This round explicitly asked for the statistical tests
+too: reran `code/23_permutation_check.py` (the per-seed permutation test and Fisher combination),
+`code/25_hierarchical_permutation.py` (the compound-level permutation test), and, for completeness,
+`code/13_naive_vs_proposed_alignment.py` and `code/27_score_decomposition_alignment.py` again (both
+already rerun once this session, rerun a second time here since this round asked for an
+*independent* final rerun, not a reuse of the prior one). `results/permutation_check.csv`,
+`results/permutation_check_combined.csv`, `results/naive_vs_proposed_alignment.csv`, and
+`results/score_decomposition_alignment.csv` all reproduced byte-identical.
+`results/hierarchical_permutation.csv` also reproduced byte-identical, including the 3-of-20,000
+dropped degenerate draws on epilepsy/proconvulsant (5n). Every number cited anywhere in main.tex's
+permutation-test and hierarchical-permutation discussion is now confirmed to come from a script
+that reproduces its own output exactly on a from-scratch rerun, not just from a CSV that happens to
+still be sitting in the repository.
+
+**Biological validation (ATC/SIDER coverage, simulation-based ground truth).** This review flags it
+as a realistic risk for a reviewer but says it is "acceptable for a methodological paper" and asks
+for no specific fix; it is already stated in main.tex's Limitations paragraph ("ATC/SIDER cover
+under 10% of the library") and in the paper's own framing of its contribution as methodological
+(Section 6's novelty-framing sentence, added last round). No change made.
+
 ## 5i. Cold-start compounds and the shared MF embedding (second external review, Issue 5)
 
 The second review also asked how the shared MF embedding is obtained for compounds with zero

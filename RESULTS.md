@@ -1430,6 +1430,178 @@ supplementary appendix beyond the main body, that would be the natural place for
 above; this was not pursued without the user's direction on whether RECOMB's submission format
 permits it.
 
+## 5s. A real aggregation bug in Table 3's "Proposed's term" column, found while building the
+decomposition this review asked for (a sixth round of review, pasted inline, Issue 1, High)
+
+This review's main technical concern: 5o's top-50-overlap finding (84-98%, not 100%) means up to
+16% of top-50 membership can still differ between $s_{\text{plain}}$ and $s_{\text{proposed}}$,
+which matters for a metric defined on exactly a top-50 cutoff. It asked for a small table comparing
+the diagnostic metric (AUROC against each bias flag) under all three scores, to separate how much
+of the plain-to-proposed change comes from dropping the area factor at scoring time versus from
+refitting the base coefficients jointly with it.
+
+Building this in `code/27_score_decomposition_alignment.py` surfaced something more consequential
+than the comparison itself: a real bug in how Table 3's existing "Proposed's term" column was being
+aggregated. That column reports $P=s_{\text{joint}}-s_{\text{proposed}}=\hat\gamma^\top a$'s AUROC
+against each flag. $P$ comes from an SVD factor whose sign is mathematically arbitrary and can land
+either way at each independent seed's refit (already documented in Table 3's own caption and in
+`code/23_permutation_check.py`'s sign-free convention). `code/13_naive_vs_proposed_alignment.py`'s
+summary, though, took $\max(\mathrm{AUROC}, 1-\mathrm{AUROC})$ of the AUROC *already averaged across
+5 seeds*, not of each seed's own AUROC before averaging. Averaging SIGNED AUROC across seeds whose
+sign is independently arbitrary at each refit lets a real, consistently one-directional per-seed
+effect cancel toward 0.5 in the aggregate, purely from sign instability that carries no information
+of its own:
+
+| Target | Flag | per-seed raw AUROCs | mean(raw) [old, wrong] | mean(sign-free per seed) [correct] |
+|---|---|---|---|---|
+| antipsychotic | same-ATC-area | 0.520, 0.439, 0.716, 0.433, 0.471 | 0.516 | 0.579 |
+| antipsychotic | hard-negative | (straddles 0.5 similarly) | 0.502 | 0.580 |
+| depression | same-ATC-area | (straddles 0.5 similarly) | 0.517 | 0.561 |
+| depression | hard-negative | (straddles 0.5 similarly) | 0.508 | 0.540 |
+| epilepsy | same-ATC-area | consistently one-signed | 0.657 | 0.657 (unaffected) |
+| epilepsy | hard-negative | consistently one-signed | 0.565 | 0.568 (unaffected) |
+| epilepsy | proconvulsant | consistently one-signed | 0.676 | 0.676 (unaffected) |
+
+Epilepsy's cells are all consistently signed across its 5 seeds, so sign-correcting before vs. after
+averaging gives (almost) the same answer there, which is exactly why this bug went unnoticed through
+five prior rounds of review: it only bites where the raw per-seed sign actually flips, depression and
+antipsychotic specifically, the two targets the paper was already calling "near chance." Fixed by
+sign-correcting each seed's AUROC before averaging (matching the convention `23_permutation_check.py`
+and `25_hierarchical_permutation.py` already used correctly for the same underlying quantity), in
+`13_naive_vs_proposed_alignment.py`. $P$ for depression and antipsychotic is 0.54-0.58, not 0.50-0.52:
+modest, not literally at chance, though still well below naive's 0.64-0.77.
+
+This does not change the paper's main conclusion. The strongest, most direct evidence for "the metric
+cannot see the proposed method's mechanism" was never Table 3's AUROC, explicitly framed in main.tex
+as "a heuristic screening diagnostic, not a formal necessary condition" (Section 4.1); it is the
+intervention test (5c), which dials the correction's real effect into the score directly and finds
+depression's, antipsychotic's, and lipid's bias metrics flat regardless. That finding is unaffected by
+this bug (it never used $P$'s aggregated AUROC). What changes is only the supporting screening number
+and its "near chance" characterization, both now corrected.
+
+## 5t. Three-score decomposition table (a sixth round of review, pasted inline, Issue 1 continued)
+
+With the bug above fixed, the decomposition this review actually asked for: three logit-scale
+differences, named for which pair of scores they compare (not assumed to combine additively in AUROC
+space, since AUROC is a nonlinear functional and this is checked empirically, not assumed):
+
+- $P$ = $s_{\text{joint}}-s_{\text{proposed}}$ (already in Table 3, the factor's own dropped
+  contribution)
+- Plain$\to$Proposed = $s_{\text{proposed}}-s_{\text{plain}}$ ($A$ excluded from both sides since
+  proposed already drops it; this IS the complete, directly-reported plain-to-proposed empirical
+  gap by itself, not a partial piece needing further decomposition, since there is no "drop" step
+  between these two particular scores)
+- Plain$\to$Joint = $s_{\text{joint}}-s_{\text{plain}}$ = Plain$\to$Proposed $+$ $P$ (the same
+  comparison against the undropped joint fit; not itself a score the paper reports anywhere, since
+  proposed always drops $A$ at scoring time, included to check whether the two effects combine
+  additively)
+
+Each scored as a sign-free-per-seed AUROC classifier of each flag, same CVS2 candidates, 5 seeds
+(`code/27_score_decomposition_alignment.py`, which recomputes $P$ and checks it against
+`results/permutation_check.csv` before trusting anything else, the same drift guard used in 5n):
+
+| Target | Flag | Naive | $P$ | Plain$\to$Proposed | Plain$\to$Joint | $X$ alone |
+|---|---|---|---|---|---|---|
+| depression | same-ATC-area | 0.766 | 0.561 | 0.575 | 0.568 | 0.718 |
+| depression | hard-negative | 0.636 | 0.540 | 0.556 | 0.551 | 0.514 |
+| antipsychotic | same-ATC-area | 0.774 | 0.579 | 0.568 | 0.531 | 0.706 |
+| antipsychotic | hard-negative | 0.663 | 0.580 | 0.568 | 0.543 | 0.591 |
+| epilepsy | same-ATC-area | 0.787 | 0.657 | 0.653 | 0.542 | 0.722 |
+| epilepsy | hard-negative | 0.600 | 0.568 | 0.559 | 0.539 | 0.613 |
+| epilepsy | proconvulsant | 0.721 | 0.676 | 0.677 | 0.609 | 0.695 |
+
+Two findings. First, Plain$\to$Proposed (the complete empirical gap the review asked for by name) is
+comparable to $P$ on most cells, 0.53-0.68 both, confirming they measure related but not identical
+things, exactly as main.tex's Section 4.1 states rather than assumes. Second, and not something either
+review round or this project anticipated going in: Plain$\to$Joint is LOWER than both $P$ and
+Plain$\to$Proposed on 6 of 7 cells (0.53-0.61), despite being their sum in raw logit space. The
+refit-coefficient-shift effect and the dropped-factor effect each carry real, separately measurable
+association with the flags, but adding them together as a combined score does not compound that
+association; it partially cancels. This is a legitimate property of combining two real but
+inconsistently-directioned (in sign-free terms) effects into one score, not a computational error:
+checked by confirming Plain$\to$Joint's values equal Plain$\to$Proposed plus $P$ in raw (signed) logit
+space before any AUROC is taken. main.tex's Table 3 now reports both new columns alongside $P$.
+
+## 5u. Figure for the synthetic correction comparison and complete noise sweep (a sixth round of
+review, pasted inline, Issue 2, High: "replace some descriptive text with a figure")
+
+5p's correction-comparison and noise-sweep numbers were dense prose with no corresponding figure,
+despite this review calling them "among the strongest results in the paper." `code/29_make_synthetic
+_figure.py` builds a two-panel figure strictly from `results/synthetic_groundtruth.csv` and
+`results/confound_noise_sweep.csv` (both already 30-seed, no numbers invented in-figure): panel (a) a
+bar chart of the top-50 true-confound rate across all five scores (plain/naive/proposed/direct-
+subtract/oracle) with 95% CI error bars; panel (b) the complete seven-level noise sweep, both
+application mechanisms, with 95% CI error bars and a marker at the real method's own 0.84-AUROC
+estimation-quality region. `paper/main.tex`'s Section 5.7/5d text is rewritten to point to the figure
+and state only the headline paired-gap statistic (0.218, CI 0.191-0.245) inline, reclaiming space
+previously spent restating every sigma level's numbers in prose (those numbers are unchanged from 5p
+and still live in full in that section above and in the CSVs).
+
+## 5v. Confound-chemistry correlation sensitivity sweep (a sixth round of review, pasted inline,
+Issue 5/B, marked "desirable, rather than mandatory")
+
+This review asked whether the fit-then-project-vs-direct-subtract gap (5p, 5u) holds only under
+`code/20_synthetic_groundtruth.py`'s one fixed structural choice, a confound whose noise scale
+relative to its chemistry-subspace signal was never varied. `simulate()` gained an optional
+`confound_noise_scale` argument (default unchanged, so every existing caller reproduces its prior
+numbers exactly); `code/28_confound_chemistry_correlation_sensitivity.py` sweeps it across a range
+from a confound almost entirely determined by chemistry to one almost independent of it, reporting
+the REALIZED $R^2$ of regressing the confound on $X$ (the actual correlation strength, not the noise
+knob itself) alongside the paired gap at each level, 30 seeds:
+
+| noise scale | $R^2$(confound ~ chemistry) | paired gap (fit-project $-$ direct-sub) | 95% CI | $d_z$ |
+|---|---|---|---|---|
+| 0.10 | 0.990 | 0.051 | (-0.019, 0.120) | 0.27 |
+| 0.25 | 0.942 | -0.020 | (-0.064, 0.024) | -0.17 |
+| 0.50 (original) | 0.804 | 0.027 | (0.000, 0.055) | 0.38 |
+| 1.00 | 0.509 | 0.149 | (0.121, 0.176) | 2.00 |
+| 2.00 | 0.212 | 0.203 | (0.178, 0.227) | 3.07 |
+| 4.00 | 0.071 | 0.261 | (0.231, 0.290) | 3.28 |
+
+This is a genuinely important boundary condition, not just a robustness confirmation. At $R^2\geq0.94$
+(the confound almost entirely explained by chemistry), the gap is statistically indistinguishable from
+zero, even trending slightly negative at $R^2=0.942$: when the representation $X$ already captures
+nearly everything about the confound, dropping the factor's explicit contribution at scoring barely
+matters, since $X$'s own coefficients can absorb almost the same information regardless. As $R^2$
+falls, meaning the confound carries real signal $X$ cannot already explain, the gap grows large and
+tight (0.149 to 0.261, $d_z$ 2.0 to 3.3). The paper's original baseline ($R^2=0.804$) sits close to
+the boundary where the effect is only barely detectable (CI touching 0.000): this is the SAME finding
+5p's $\sigma=0$ noise-sweep point made, since $\sigma=0$ with noise\_scale=0.50 is this exact condition
+under a different name.
+
+This refines, rather than weakens, the paper's central claim: the correction-application gap is not a
+universal property of any confound, it is specific to confounds the fitting representation does not
+already absorb. That happens to connect directly to the real-data pattern already documented in
+Section "alignment" (same-ATC-area is well predicted by $X$ alone, 0.706-0.722, for every target,
+though not differentially enough between epilepsy and the other two to serve as a direct real-data
+analog of this synthetic $R^2$, since the true confound, unlike the proxy flag, is unobserved in real
+data; the synthetic sweep is the closest this paper can get to testing that boundary directly).
+main.tex adds one sentence in Section 5.7/5d stating this range and its two endpoints; the full table
+is here.
+
+## 5w. Abstract, novelty framing, and seed-generation clarity (a sixth round of review, pasted inline,
+Issues 3, 4, and the "formal result" framing note)
+
+Three smaller edits from this round, all wording rather than new computation:
+
+- The abstract's closing two sentences are rewritten to lead with the 30-seed synthetic finding and
+  state the direct-subtraction comparison with its effect size (paired gap 0.22, $d_z=3.0$,
+  $p<10^{-15}$), following this review's suggested framing closely in substance while keeping this
+  project's own established prose style (no em dashes, no rule-of-three, etc.) rather than adopting
+  the reviewer's exact sentence. The out-of-sample-factor bug disclosure is shortened to one clause
+  ("fixing a bug that silently zeroed...") rather than removed, since the bug is real and previously
+  reported in Table 3 without caveat, not something to understate; the fuller account stays in
+  Section 4.4/5.3 and 5b, unchanged.
+- Discussion now states explicitly that the residual-orthogonality Proposition follows from standard
+  regression score equations, so the paper's contribution is the diagnostic framework built on it and
+  the experiments confirming where it applies, not new theory, per this review's suggestion to
+  "emphasize the latter" given how a RECOMB reviewer might otherwise read the Proposition's novelty.
+- `code/20_synthetic_groundtruth.py`'s `simulate()` docstring and main.tex's Section 5.7/5d text both
+  now state plainly that the 30 seeds are independent datasets (fresh $X$, loadings, and labels each
+  time), not resamples of one fixed dataset, answering this review's request for clarity on how they
+  were generated (5p already stated this in prose; it is now also in the code docstring other readers
+  of the repository will see first).
+
 ## 5i. Cold-start compounds and the shared MF embedding (second external review, Issue 5)
 
 The second review also asked how the shared MF embedding is obtained for compounds with zero

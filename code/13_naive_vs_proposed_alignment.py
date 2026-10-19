@@ -34,6 +34,17 @@ same-ATC-area membership (the area_enrichment criterion) and SIDER-hard-negative
 membership (the hard_neg_rank_pct criterion), via AUROC of each penalty term as a standalone
 classifier of that flag.
 
+A second bug (logged honestly, found this round while building a decomposition a sixth round of
+review asked for, see main()): area_penalty comes from an SVD factor whose sign is mathematically
+arbitrary and can land either way at each independent seed's refit. This script's own summary used
+to take max(AUROC, 1-AUROC) of the AUROC already averaged across 5 seeds, rather than of each seed's
+own AUROC before averaging. Averaging SIGNED AUROC across independently-arbitrary-signed seeds lets
+a real, consistently one-directional per-seed effect cancel toward 0.5 purely from sign instability,
+exactly what happened to depression's and antipsychotic's cells (epilepsy's signs happen to be
+stable across seeds, so it was unaffected, which is why this went unnoticed through five prior
+rounds of review). Fixed in main() below to sign-correct each seed before averaging, matching the
+convention code/23_permutation_check.py already used correctly for the same underlying quantity.
+
 Writes: results/naive_vs_proposed_alignment.csv (plus the original, zero-masked `area_penalty_raw`
 columns, kept alongside the corrected ones for direct before/after comparison)
 """
@@ -127,8 +138,33 @@ def main():
     out = pd.DataFrame(rows)
     out.to_csv("../results/naive_vs_proposed_alignment.csv", index=False)
 
-    print("Mean AUROC (5 seeds), each penalty term as a standalone classifier of the bias metric's own flag:")
-    summary = out.groupby("target")[[c for c in out.columns if c.startswith("auroc_")]].mean()
+    # A sixth round of review (pasted inline, Issue 1) asked for a decomposition table that led to
+    # rechecking this script's own aggregation and finding a real bug: Table "alignment"'s
+    # "Proposed's term" column (area_penalty, built on the SVD factor A whose sign is mathematically
+    # arbitrary across independently-fit seeds) was reported as sign_free(mean(raw AUROC across
+    # seeds)) -- taking the plain groupby mean below, then noting elsewhere that the sign is
+    # arbitrary. That is backwards: averaging SIGNED AUROC across seeds whose SVD sign can land
+    # either way at each independent refit lets a real, consistently one-directional per-seed effect
+    # cancel toward 0.5 in the aggregate, purely from sign instability that carries no information of
+    # its own. depression and antipsychotic's cells do exactly this (raw per-seed values straddling
+    # 0.5 on both sides); epilepsy's do not (consistently signed across all 5 seeds), which is why
+    # epilepsy's numbers were unaffected and this went unnoticed. The correct aggregate, matching the
+    # convention code/23_permutation_check.py and code/25_hierarchical_permutation.py already use
+    # for the SAME quantity, is mean(sign_free(per-seed AUROC)), sign-correcting EACH seed before
+    # averaging, not after.
+    def sign_free(s):
+        return s.apply(lambda a: max(a, 1 - a) if pd.notna(a) else a)
+
+    area_cols = [c for c in out.columns if c.startswith("auroc_areapenalty")]
+    rate_cols = [c for c in out.columns if c.startswith("auroc_rawrate")]
+    corrected = out.copy()
+    for c in area_cols:
+        corrected[c] = sign_free(corrected[c])
+
+    print("Mean AUROC (5 seeds), each penalty term as a standalone classifier of the bias metric's "
+          "own flag.\nNaive's raw_rate has no sign ambiguity; proposed's area_penalty is sign-free "
+          "PER SEED before averaging (fixed this round; see comment above):")
+    summary = corrected.groupby("target")[rate_cols + area_cols].mean()
     print(summary.round(3))
     print("\n0.5 = the penalty term carries no information about that flag. Higher = better separation.")
     print("Wrote results/naive_vs_proposed_alignment.csv")

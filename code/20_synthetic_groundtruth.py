@@ -82,12 +82,17 @@ SEEDS = list(range(30))
 LAMBDA_NAIVE = 2.0
 
 
-def simulate(seed):
+def simulate(seed, confound_noise_scale=0.5):
+    """confound_noise_scale controls how strongly z_area correlates with X's chemistry subspace:
+    0.5 is this script's original, fixed choice. A sixth round of review (pasted inline, Issue 5/B)
+    asked whether the correction-application gap (code/28_confound_chemistry_correlation_sensitivity.py)
+    holds only under this one structural assumption; the default is unchanged so every existing
+    caller (this script, code/26_confound_noise_sweep.py) reproduces its prior numbers exactly."""
     rng = np.random.default_rng(seed)
     X = rng.normal(size=(N, D_CHEM))
     w_area = rng.normal(size=5)
     w_area /= np.linalg.norm(w_area)
-    z_area = X[:, :5] @ w_area + rng.normal(scale=0.5, size=N)
+    z_area = X[:, :5] @ w_area + rng.normal(scale=confound_noise_scale, size=N)
 
     diseases = [f"area_disease_{j}" for j in range(N_DISEASES_IN_AREA)] + ["other_disease"]
     betas = {d: rng.normal(size=D_CHEM) / np.sqrt(D_CHEM) for d in diseases}

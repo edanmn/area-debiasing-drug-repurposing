@@ -4,7 +4,14 @@ correction comparison and complete seven-level noise sweep", since these dense-p
 "among the strongest in the paper"). Built strictly from results/synthetic_groundtruth.csv and
 results/confound_noise_sweep.csv (both already 30-seed), no numbers invented in-figure.
 
-Writes: figures/fig2_synthetic_correction_gap.pdf
+Saved as PNG (matplotlib's "Agg" raster backend, dpi=150), matching fig1's convention
+(code/08_make_figures.py) rather than embedding a vector PDF inside main.pdf: an external review
+reported Figure 2 rendering as a blank box in their PDF viewer even though it rendered correctly
+here (confirmed via PyMuPDF's own rasterizer before this fix), consistent with a vector-PDF-inside-
+PDF compatibility issue in some viewers rather than a content problem. Figure 2 was the only
+vector-embedded figure in the paper; switching it to PNG removes that whole failure class.
+
+Writes: figures/fig2_synthetic_correction_gap.png
 """
 import numpy as np
 import pandas as pd
@@ -69,9 +76,9 @@ def main():
     ax2.legend(fontsize=7, loc="lower right")
 
     fig.tight_layout()
-    fig.savefig(FIG + "fig2_synthetic_correction_gap.pdf")
+    fig.savefig(FIG + "fig2_synthetic_correction_gap.png", dpi=150)
     plt.close(fig)
-    print(f"Wrote {FIG}fig2_synthetic_correction_gap.pdf")
+    print(f"Wrote {FIG}fig2_synthetic_correction_gap.png")
 
 
 if __name__ == "__main__":

@@ -1119,7 +1119,7 @@ by recomputing with the single most extreme of the 5 seeds left out:
 | depression | hard-neg | 0.540 | 0.660 | 0.899 |
 | antipsychotic | same-area | 0.579 | 0.0055 | 0.447 |
 | antipsychotic | hard-neg | 0.580 | 0.0028 | 0.281 |
-| epilepsy | same-area | 0.657 | **2.2e-9** | **<1e-9** |
+| epilepsy | same-area | 0.657 | **2.2e-9** | **5.4e-7** |
 | epilepsy | hard-neg | 0.568 | 0.0243 | 0.198 |
 | epilepsy | proconv | 0.676 | **0.00042** | **0.0105** |
 
@@ -1294,7 +1294,7 @@ seed from Python's randomized `hash()` to a deterministic `zlib.crc32` so reruns
 | depression | hard-neg | 0.660 | 0.899 | 0.577 | fail (both) |
 | antipsychotic | same-area | 0.0055 | 0.447 | 0.0072 | fail (excl.); fail (hier., by 0.00006) |
 | antipsychotic | hard-neg | 0.0028 | 0.281 | 0.0091 | fail (excl.); fail (hier.) |
-| epilepsy | same-area | 2.2e-9 | <1e-9 | 0.00005 | **pass (all three)** |
+| epilepsy | same-area | 2.2e-9 | 5.4e-7 | 0.00005 | **pass (all three)** |
 | epilepsy | hard-neg | 0.0243 | 0.198 | 0.0344 | fail (all three) |
 | epilepsy | proconvulsant | 0.00042 | 0.0105 | **0.00265** | fail (excl.); **pass (hier.)** |
 
@@ -1601,6 +1601,75 @@ Three smaller edits from this round, all wording rather than new computation:
   time), not resamples of one fixed dataset, answering this review's request for clarity on how they
   were generated (5p already stated this in prose; it is now also in the code docstring other readers
   of the repository will see first).
+
+## 5x. Figure 2 rendering fix, Table 3 verification, and a reproducibility audit of Tables 1-3,
+the intervention experiment, and Figure 2 (a follow-up request after the sixth review round)
+
+Four checks requested directly, not from a pasted external review: fix Figure 2 (reported as a
+blank box in a PDF viewer, though it rendered correctly here), verify Table 3's corrected AUROCs
+against the permutation-test results, confirm the abstract/discussion say "modest" rather than
+"near chance" (already done in the sixth-round commit), and audit reproducibility of the scripts
+behind Tables 1-3, the intervention experiment, and Figure 2.
+
+**Figure 2.** It was the only vector-PDF-embedded figure in the paper (`fig2_synthetic_
+correction_gap.pdf`, matplotlib's PDF backend); every other figure (`fig1_*`) is a PNG. PyMuPDF's
+own rasterizer rendered it correctly, which ruled out a content problem, but that does not rule out
+a renderer-compatibility problem in whatever PDF viewer actually showed a blank box. Fixed by
+switching `code/29_make_synthetic_figure.py` to save a PNG (dpi 150) instead, matching `code/
+08_make_figures.py`'s convention for every other figure, removing the whole vector-embedding
+failure class rather than debugging one specific viewer.
+
+**Table 3 vs. the permutation-test results.** All 28 cells (7 target/flag rows x Naive, $P$,
+Plain-to-Proposed, $X$-alone) were recomputed independently from `results/naive_vs_proposed_
+alignment.csv`, `results/score_decomposition_alignment.csv`, and `results/representation_predicts_
+flag.csv`, and the $P$ column was additionally cross-checked against `results/permutation_check.csv`'s
+own independently-computed `observed_auroc` (the quantity `code/23_permutation_check.py` uses for
+the significance tests). All 28 values matched to 3 decimals, and $P$ matched `permutation_check.
+csv` exactly in every cell. One real precision issue surfaced in the surrounding prose, not the
+table: main.tex claimed epilepsy's same-ATC-area flag "holds up either way ($p<10^{-8}$)," but the
+leave-one-out Fisher p-value is $5.4\times10^{-7}$, which is NOT below $10^{-8}$ (about 50x larger).
+Both values clear the Bonferroni threshold overwhelmingly, so the substance of "holds up either
+way" is correct, but the stated bound was wrong for one of the two numbers it covered. Fixed to
+state both exact values. The same error, "<1e-9" where the true value is 5.4e-7, was present in
+this file's own 5h and 5n tables above and is fixed there too.
+
+**Reproducibility audit.** Reran every script behind Tables 1-3, the intervention experiment, and
+Figure 2 from scratch and diffed the output CSV byte-for-byte against the committed version:
+`code/06_run_evaluation.py` (Tables 1-2), `code/14_representation_predicts_flag.py` (Table 3's $X$
+alone column), `code/19_intervention_doseresponse.py` (the intervention experiment), `code/
+20_synthetic_groundtruth.py` and `code/26_confound_noise_sweep.py` (Figure 2). All five reproduced
+byte-identical output; nothing in this pipeline depends on an unseeded random source. `code/
+13_naive_vs_proposed_alignment.py` and `code/27_score_decomposition_alignment.py` were not rerun
+again here since both were already rerun fresh in the sixth-round commit this session and are
+exactly what Table 3's verification above checks against.
+
+**Five numeric transcription errors found and fixed in Tables 1 and 2, independent of anything
+this review round asked about.** Checking main.tex's printed numbers against the exact (unrounded)
+values in `results/eval_summary.csv` and the raw per-seed files found five cells where the paper's
+rounded value did not match the correct rounding of the exact number, all stale (pre-dating this
+session, never caught by an earlier pass that only checked tables "looked plausible" rather than
+rounding every exact value independently):
+
+| Table | Cell | Paper had | Correct (exact value) |
+|---|---|---|---|
+| 1 | depression, proposed, CI upper | 0.247 | 0.248 (0.247534) |
+| 1 | antipsychotic, proposed, mean | 0.437 | 0.438 (0.437856) |
+| 1 | antipsychotic, proposed, CI upper | 0.611 | 0.612 (0.612033) |
+| 2 | epilepsy area rate, proposed | 0.176 | 0.180 (0.180000, exact) |
+| 2 | epilepsy hard-neg pct., proposed | 42.0 | 41.9 (41.906780) |
+| 2 | epilepsy proconv pct., proposed | 26.3 | 26.4 (26.352389) |
+
+The three Table 1 cases are rounding-boundary slips (off by 0.001, the exact value rounds the other
+way at 3 decimals). The three Table 2 cases are larger and, for area rate, exact: Table 2 said
+0.176 where the underlying 5-seed mean is precisely 0.180, no rounding ambiguity at all. This was
+caught by an internal inconsistency, not just a CSV diff: Section 5.7/5.c's intervention-test text
+already states "area rate 0.180 to 0.140" and "proconvulsant percentile 26.4 to 32.7" for the exact
+same quantity (proposed, epilepsy, alpha=0, the undosed/actual value), i.e. the SAME number was
+already correct in one part of the paper and wrong in another, exactly the "same quantity stated
+twice with different values" failure the project's own scientific-rigor skill warns against. None
+of these errors change any qualitative claim in the paper (every "wrong direction," "under 5
+points," or similar comparison in the surrounding prose still holds with the corrected numbers);
+all five are fixed in main.tex now.
 
 ## 5i. Cold-start compounds and the shared MF embedding (second external review, Issue 5)
 

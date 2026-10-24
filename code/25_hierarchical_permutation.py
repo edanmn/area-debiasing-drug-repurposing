@@ -73,6 +73,7 @@ def main():
     prior = pd.read_csv("../results/permutation_check.csv")
 
     rows = []
+    unique_compound_rows = []
     for target in ["depression", "antipsychotic", "epilepsy"]:
         k0 = col_idx[target]
         area_iks = set(atc.loc[atc.atc_level1_code == AREA_OF[target], "ik14"])
@@ -146,9 +147,16 @@ def main():
                   f"null mean={null_valid.mean():.3f} std={null_valid.std():.3f}  "
                   f"dropped={n_dropped}/{M_GLOBAL_PERM}  p_hierarchical={p_hier:.5f}")
 
+        cand_iks_union = set()
+        for seed, (_, cand) in per_seed.items():
+            cand_iks_union.update(cmp.ik14.values[cand])
+        unique_compound_rows.append(dict(target=target, n_unique_test_compounds=len(cand_iks_union),
+                                          n_total_pool=N))
+
     out = pd.DataFrame(rows)
     out.to_csv("../results/hierarchical_permutation.csv", index=False)
-    print("\nWrote results/hierarchical_permutation.csv")
+    pd.DataFrame(unique_compound_rows).to_csv("../results/unique_compound_counts_hierarchical.csv", index=False)
+    print("\nWrote results/hierarchical_permutation.csv, results/unique_compound_counts_hierarchical.csv")
 
 
 if __name__ == "__main__":

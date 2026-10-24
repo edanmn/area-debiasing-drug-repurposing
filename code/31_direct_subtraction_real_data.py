@@ -51,18 +51,20 @@ def main():
     proconv_iks = set(proconv.loc[proconv.in_lincs == True, "ik14"].dropna())
     proconv_mask_all = cmp.ik14.isin(proconv_iks).values
 
-    auprc_rows, enrich_rows, hardneg_rows = [], [], []
+    auprc_rows, enrich_rows, hardneg_rows, unique_compound_rows = [], [], [], []
 
     for target in TARGETS:
         k0 = col_idx[target]
         nc_idx = [col_idx[d] for d in negative_controls(target, diseases=cols)]
         hard_col = hard_hits[:, k0]
         y_full = Y[:, k0].astype(int)
+        test_iks_union = set()
 
         for seed in SEEDS:
             train_mask, test_rows = run_eval.make_masks(N, K, k0, "CVS2", seed)
             if len(test_rows) == 0 or y_full[test_rows].sum() == 0:
                 continue
+            test_iks_union.update(cmp.ik14.values[test_rows])
             Ufree, V, b = fit_shared_mf(Y, train_mask, r=R_FREE, seed=seed)
             Zrep = np.hstack([Xchem, Ufree])
             clfs, P_hat = fit_per_indication_logreg(Zrep, Y, train_mask)
@@ -102,6 +104,10 @@ def main():
                     row["n_proconv"] = int(proconv_mask_all[test_rows].sum())
                 hardneg_rows.append(row)
 
+        unique_compound_rows.append(dict(target=target, n_unique_test_compounds=len(test_iks_union),
+                                          n_total_pool=N))
+
+    pd.DataFrame(unique_compound_rows).to_csv("../results/unique_compound_counts_direct_subtract.csv", index=False)
     auprc_df = pd.DataFrame(auprc_rows)
     enrich_df = pd.DataFrame(enrich_rows)
     hardneg_df = pd.DataFrame(hardneg_rows)

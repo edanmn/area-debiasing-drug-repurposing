@@ -98,8 +98,10 @@ def main():
     atc = pd.read_csv("../data/atc_level1.csv")
 
     rows = []
+    unique_compound_rows = []
     for target in ["depression", "antipsychotic", "epilepsy"]:
         k0 = col_idx[target]
+        cand_iks_union = set()
         # same-ATC-area flag: external WHO ATC level-1 code, matching run_eval.area_enrichment and
         # 13_naive_vs_proposed_alignment.py (the script that actually produced Table 3's numbers) --
         # NOT this project's own 18-indication co-occurrence matrix, a different definition an
@@ -128,12 +130,16 @@ def main():
             coef_A = clf_db.coef_[0][n_base:]
             area_penalty = A_oos @ coef_A
             cand = test_rows[y_full[test_rows] == 0]
+            cand_iks_union.update(cmp.ik14.values[cand])
 
             for flag_name, flag in flags.items():
                 obs, pv = perm_pvalue(flag[cand], area_penalty[cand], seed=seed)
                 rows.append(dict(target=target, flag=flag_name, seed=seed,
                                   n_cand=len(cand), n_pos=int(flag[cand].sum()),
                                   observed_auroc=obs, perm_pvalue=pv))
+
+        unique_compound_rows.append(dict(target=target, n_unique_test_compounds=len(cand_iks_union),
+                                          n_total_pool=N))
 
     out = pd.DataFrame(rows)
     out.to_csv("../results/permutation_check.csv", index=False)
@@ -156,10 +162,12 @@ def main():
                                    robust_to_leave_one_out=(p_fisher < alpha) and (p_excl < 0.05)))
     combined = pd.DataFrame(combined_rows)
     combined.to_csv("../results/permutation_check_combined.csv", index=False)
+    pd.DataFrame(unique_compound_rows).to_csv("../results/unique_compound_counts_permutation.csv", index=False)
     print(out.groupby(["target", "flag"])[["observed_auroc", "perm_pvalue"]].mean().round(3))
     print()
     print(combined.round(4))
-    print("\nWrote results/permutation_check.csv, results/permutation_check_combined.csv")
+    print("\nWrote results/permutation_check.csv, results/permutation_check_combined.csv,")
+    print("      results/unique_compound_counts_permutation.csv")
 
 
 if __name__ == "__main__":

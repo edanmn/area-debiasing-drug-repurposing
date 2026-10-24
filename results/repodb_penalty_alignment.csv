@@ -1,0 +1,4 @@
+target,n_evidence,n_failed,n_approved_mislabeled,auroc_naive_vs_failed,auroc_areapenalty_vs_failed
+depression,7,2,5,0.09999999999999998,0.9
+antipsychotic,4,3,1,,
+epilepsy,5,2,3,0.75,0.33333333333333337
